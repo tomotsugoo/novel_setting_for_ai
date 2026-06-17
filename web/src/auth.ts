@@ -9,16 +9,16 @@ async function sha256(text: string): Promise<string> {
 export async function login(password: string): Promise<boolean> {
   const hash = await sha256(password);
   if (hash === PASSWORD_HASH) {
-    sessionStorage.setItem(SESSION_KEY, "1");
+    localStorage.setItem(SESSION_KEY, "1");
     return true;
   }
   return false;
 }
 
 export function isAuthenticated(): boolean {
-  return sessionStorage.getItem(SESSION_KEY) === "1";
+  return localStorage.getItem(SESSION_KEY) === "1";
 }
 
 export function logout(): void {
-  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
 }
