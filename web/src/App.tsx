@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Characters from "./pages/Characters";
@@ -20,7 +20,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter basename="/novel_setting_for_ai">
+    <HashRouter>
       <div className="flex h-screen bg-gray-100">
         {sidebarOpen && (
           <div
@@ -64,6 +64,6 @@ export default function App() {
           </main>
         </div>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
