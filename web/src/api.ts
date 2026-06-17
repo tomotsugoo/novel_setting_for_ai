@@ -34,6 +34,12 @@ export const api = {
       apiFetch(`/api/scene_characters/${sceneId}/${characterId}`, { method: 'DELETE' }),
   },
   migrate: () => apiFetch<{results: string[]}>('/api/migrate', { method: 'POST' }),
+  consciousnessSwaps: {
+    list: () => apiFetch<{swaps: ConsciousnessSwap[]}>('/api/consciousness_swaps'),
+    create: (data: Partial<ConsciousnessSwap>) => apiFetch('/api/consciousness_swaps', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<ConsciousnessSwap>) => apiFetch(`/api/consciousness_swaps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/consciousness_swaps/${id}`, { method: 'DELETE' }),
+  },
 };
 
 export interface Character {
@@ -53,6 +59,13 @@ export interface WorldRule {
 export interface SceneCharacter {
   scene_id: string; character_id: string; role_in_scene: string;
   notes: string | null; name: string; role: string;
+}
+export interface ConsciousnessSwap {
+  id: string;
+  from_character_id: string; from_name?: string;
+  to_character_id: string; to_name?: string;
+  swapped_at: string; resolved_at: string | null;
+  is_suppressed: number; trigger_event: string | null; notes: string | null;
 }
 export interface DashboardData {
   characters: number; scenes: number; written: number;

@@ -73,6 +73,59 @@ const TOOLS = [
   },
 ];
 
+async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
+  const t = sceneTime ?? "9999-99-99";
+  // この体に誰かの意識が入っているか（to_character_id = この体の持ち主）
+  const swapIn = await db.prepare(
+    `SELECT cs.*, c_from.name as owner_name, c_from.id as owner_id
+     FROM consciousness_swaps cs
+     JOIN characters c_from ON cs.from_character_id = c_from.id
+     WHERE cs.to_character_id = ?
+       AND cs.swapped_at <= ?
+       AND (cs.resolved_at IS NULL OR cs.resolved_at > ?)
+     ORDER BY cs.swapped_at DESC LIMIT 1`
+  ).bind(characterId, t, t).first() as Record<string, unknown> | null;
+
+  // この意識がどこかの体に入っているか（from_character_id = この意識の持ち主）
+  const swapOut = await db.prepare(
+    `SELECT cs.*, c_to.name as body_name, c_to.id as body_id
+     FROM consciousness_swaps cs
+     JOIN characters c_to ON cs.to_character_id = c_to.id
+     WHERE cs.from_character_id = ?
+       AND cs.swapped_at <= ?
+       AND (cs.resolved_at IS NULL OR cs.resolved_at > ?)
+     ORDER BY cs.swapped_at DESC LIMIT 1`
+  ).bind(characterId, t, t).first() as Record<string, unknown> | null;
+
+  if (!swapIn && !swapOut) return null;
+
+  if (swapIn) {
+    return {
+      type: "inhabited_by",
+      owner_id: swapIn.owner_id,
+      owner_name: swapIn.owner_name,
+      is_suppressed: swapIn.is_suppressed === 1,
+      trigger_event: swapIn.trigger_event,
+      notes: swapIn.notes,
+      swapped_at: swapIn.swapped_at,
+    };
+  }
+
+  if (swapOut) {
+    return {
+      type: "consciousness_displaced",
+      current_body_id: swapOut.body_id,
+      current_body_name: swapOut.body_name,
+      is_suppressed: swapOut.is_suppressed === 1,
+      trigger_event: swapOut.trigger_event,
+      notes: swapOut.notes,
+      swapped_at: swapOut.swapped_at,
+    };
+  }
+
+  return null;
+}
+
 async function getCharacter(db: D1Database, args: { id: string; scene_time?: string }): Promise<unknown> {
   const character = await db.prepare("SELECT * FROM characters WHERE id = ?").bind(args.id).first();
   if (!character) return { error: `Character '${args.id}' not found` };
@@ -89,7 +142,9 @@ async function getCharacter(db: D1Database, args: { id: string; scene_time?: str
         .bind(args.id)
         .first();
 
-  return { character, state };
+  const consciousness = await getConsciousness(db, args.id, args.scene_time);
+
+  return { character, state, consciousness };
 }
 
 async function listCharacters(db: D1Database): Promise<unknown> {
@@ -119,7 +174,21 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     await db.prepare(`SELECT * FROM world_rules WHERE applies_from IS NULL OR applies_from <= ? ORDER BY category`).bind(t).all()
   ).results;
 
-  return { scene, character_states: characterStates, world_rules: worldRules };
+  // 意識入れ替わり情報
+  const swaps = storyTime ? (
+    await db.prepare(
+      `SELECT cs.*,
+        c_from.name as from_name, c_to.name as to_name
+       FROM consciousness_swaps cs
+       JOIN characters c_from ON cs.from_character_id = c_from.id
+       JOIN characters c_to ON cs.to_character_id = c_to.id
+       WHERE cs.swapped_at <= ?
+         AND (cs.resolved_at IS NULL OR cs.resolved_at > ?)
+       ORDER BY cs.swapped_at DESC`
+    ).bind(t, t).all()
+  ).results : [];
+
+  return { scene, character_states: characterStates, world_rules: worldRules, consciousness_swaps: swaps };
 }
 
 async function checkConflict(db: D1Database, args: { description: string; scene_time: string }): Promise<unknown> {
@@ -342,6 +411,46 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    if (resource === 'consciousness_swaps') {
+      if (method === 'GET') {
+        const result = await env.DB.prepare(
+          `SELECT cs.*, c_from.name as from_name, c_to.name as to_name
+           FROM consciousness_swaps cs
+           JOIN characters c_from ON cs.from_character_id = c_from.id
+           JOIN characters c_to ON cs.to_character_id = c_to.id
+           ORDER BY cs.swapped_at DESC`
+        ).all();
+        return json({ swaps: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {
+          id: string; from_character_id: string; to_character_id: string;
+          swapped_at: string; resolved_at?: string; is_suppressed?: number;
+          trigger_event?: string; notes?: string;
+        };
+        await env.DB.prepare(
+          `INSERT INTO consciousness_swaps (id, from_character_id, to_character_id, swapped_at, resolved_at, is_suppressed, trigger_event, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          body.id, body.from_character_id, body.to_character_id,
+          body.swapped_at, body.resolved_at ?? null,
+          body.is_suppressed ?? 1, body.trigger_event ?? null, body.notes ?? null
+        ).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as {resolved_at?: string; is_suppressed?: number; notes?: string};
+        await env.DB.prepare(
+          `UPDATE consciousness_swaps SET resolved_at=COALESCE(?,resolved_at), is_suppressed=COALESCE(?,is_suppressed), notes=COALESCE(?,notes) WHERE id=?`
+        ).bind(body.resolved_at ?? null, body.is_suppressed ?? null, body.notes ?? null, id).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE' && id) {
+        await env.DB.prepare("DELETE FROM consciousness_swaps WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
     if (resource === 'migrate' && method === 'POST') {
       const migrations: string[] = [
         `CREATE TABLE IF NOT EXISTS scene_characters (
@@ -350,6 +459,16 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           role_in_scene TEXT CHECK(role_in_scene IN ('main','sub','mentioned')) DEFAULT 'sub',
           notes TEXT,
           PRIMARY KEY (scene_id, character_id)
+        )`,
+        `CREATE TABLE IF NOT EXISTS consciousness_swaps (
+          id TEXT PRIMARY KEY,
+          from_character_id TEXT NOT NULL REFERENCES characters(id),
+          to_character_id TEXT NOT NULL REFERENCES characters(id),
+          swapped_at TEXT NOT NULL,
+          resolved_at TEXT NULL,
+          is_suppressed INTEGER DEFAULT 1,
+          trigger_event TEXT,
+          notes TEXT
         )`,
       ];
       const results: string[] = [];

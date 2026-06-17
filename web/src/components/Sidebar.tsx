@@ -6,6 +6,7 @@ const navItems = [
   { to: "/scenes", label: "シーン" },
   { to: "/timeline", label: "タイムライン" },
   { to: "/rules", label: "世界ルール" },
+  { to: "/consciousness", label: "意識の入れ替わり" },
   { to: "/migrate", label: "🔧 マイグレーション" },
 ];
 
