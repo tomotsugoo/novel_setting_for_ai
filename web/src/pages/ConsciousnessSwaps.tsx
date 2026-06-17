@@ -26,17 +26,6 @@ export default function ConsciousnessSwaps() {
   const sceneTime = (sceneId: string) => scenes.find(s => s.id === sceneId)?.story_time ?? '';
   const sceneLabel = (s: Scene) => `#${s.narrative_order} ${s.title}`;
 
-  const handleResolve = async (swap: ConsciousnessSwap) => {
-    const sceneId = prompt('自我回復シーンのIDを入力（またはキャンセル）');
-    if (!sceneId) return;
-    const t = sceneTime(sceneId);
-    if (!t) { alert('シーンが見つかりません'); return; }
-    try {
-      await api.consciousnessSwaps.update(swap.id, { resolved_at: t, is_suppressed: 0 });
-      load();
-    } catch (e) { setError(String(e)); }
-  };
-
   const handleDelete = async (id: string) => {
     if (!confirm('削除しますか？')) return;
     try {
