@@ -34,14 +34,16 @@ function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: stri
     <div className="space-y-1">
       <div className="flex gap-2">
         <input
+          key={`date-${date}`}
           type="date"
-          value={date}
+          defaultValue={date}
           onChange={e => onChange(buildStoryTime(e.target.value, time))}
           className="flex-1 border rounded-lg px-3 py-2 text-sm min-w-0"
         />
         <input
+          key={`time-${time}`}
           type="time"
-          value={time}
+          defaultValue={time}
           onChange={e => onChange(buildStoryTime(date, e.target.value))}
           className="w-28 border rounded-lg px-3 py-2 text-sm"
         />
