@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Character } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
@@ -21,7 +21,7 @@ export default function Characters() {
   const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
 
@@ -44,7 +44,7 @@ export default function Characters() {
     setUploading(true);
     setError(null);
     try {
-      const base64 = await resizeImageToBase64(file, 128);
+      const base64 = await resizeImageToBase64(file, 256);
       await api.characters.update(selected.id, { avatar: base64 });
       const updated = { ...selected, avatar: base64 };
       setSelected(updated);
@@ -61,18 +61,6 @@ export default function Characters() {
 
   return (
     <div>
-      {/* モーダル外に置くことでiOS Safariのoverflow内file input問題を回避 */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) handleAvatarUpload(file);
-          e.target.value = '';
-        }}
-      />
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">キャラクター</h2>
         <button onClick={() => setShowAdd(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
@@ -144,13 +132,22 @@ export default function Characters() {
             <div className="flex items-center gap-4">
               <Avatar src={selected.avatar} name={selected.name} size="lg" />
               <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 disabled:opacity-50"
-                >
-                  {uploading ? 'アップロード中...' : '画像を変更'}
-                </button>
+                <div className="relative">
+                  <span className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg text-gray-700 select-none">
+                    {uploading ? 'アップロード中...' : '画像を変更'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploading}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAvatarUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
                 {selected.avatar && (
                   <button
                     onClick={async () => {
