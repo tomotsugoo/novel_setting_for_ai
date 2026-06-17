@@ -237,14 +237,141 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id",
 };
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+}
+
+async function handleApi(request: Request, env: Env, pathname: string, method: string): Promise<Response> {
+  const db = env.DB;
+
+  // GET /api/characters
+  if (method === "GET" && pathname === "/api/characters") {
+    const result = await db.prepare("SELECT * FROM characters ORDER BY name").all();
+    return json({ characters: result.results });
+  }
+
+  // POST /api/characters
+  if (method === "POST" && pathname === "/api/characters") {
+    const body = await request.json() as Record<string, unknown>;
+    const id = (body.id as string) || (body.name as string).toLowerCase().replace(/\s+/g, "_");
+    await db
+      .prepare("INSERT INTO characters (id, name, aliases, role, description, secret) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null)
+      .run();
+    const created = await db.prepare("SELECT * FROM characters WHERE id = ?").bind(id).first();
+    return json({ character: created }, 201);
+  }
+
+  // GET /api/characters/:id  or  PUT /api/characters/:id
+  const charMatch = pathname.match(/^\/api\/characters\/([^/]+)$/);
+  if (charMatch) {
+    const id = charMatch[1];
+    if (method === "GET") {
+      const character = await db.prepare("SELECT * FROM characters WHERE id = ?").bind(id).first();
+      if (!character) return json({ error: "Not found" }, 404);
+      const states = (await db.prepare("SELECT * FROM character_states WHERE character_id = ? ORDER BY valid_from").bind(id).all()).results;
+      return json({ character, character_states: states });
+    }
+    if (method === "PUT") {
+      const body = await request.json() as Record<string, unknown>;
+      await db
+        .prepare("UPDATE characters SET name=?, aliases=?, role=?, description=?, secret=? WHERE id=?")
+        .bind(body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, id)
+        .run();
+      const updated = await db.prepare("SELECT * FROM characters WHERE id = ?").bind(id).first();
+      return json({ character: updated });
+    }
+  }
+
+  // GET /api/scenes
+  if (method === "GET" && pathname === "/api/scenes") {
+    const result = await db.prepare("SELECT * FROM scenes ORDER BY narrative_order").all();
+    return json({ scenes: result.results });
+  }
+
+  // POST /api/scenes
+  if (method === "POST" && pathname === "/api/scenes") {
+    const body = await request.json() as Record<string, unknown>;
+    const id = (body.id as string) || `scene_${Date.now()}`;
+    await db
+      .prepare("INSERT INTO scenes (id, title, narrative_order, story_time, location, synopsis, is_written, disclosure_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(id, body.title, body.narrative_order ?? 0, body.story_time ?? null, body.location ?? null, body.synopsis ?? null, body.is_written ? 1 : 0, body.disclosure_notes ?? null)
+      .run();
+    const created = await db.prepare("SELECT * FROM scenes WHERE id = ?").bind(id).first();
+    return json({ scene: created }, 201);
+  }
+
+  // PUT /api/scenes/:id
+  const sceneMatch = pathname.match(/^\/api\/scenes\/([^/]+)$/);
+  if (sceneMatch && method === "PUT") {
+    const id = sceneMatch[1];
+    const body = await request.json() as Record<string, unknown>;
+    await db
+      .prepare("UPDATE scenes SET title=?, narrative_order=?, story_time=?, location=?, synopsis=?, is_written=?, disclosure_notes=? WHERE id=?")
+      .bind(body.title, body.narrative_order ?? 0, body.story_time ?? null, body.location ?? null, body.synopsis ?? null, body.is_written ? 1 : 0, body.disclosure_notes ?? null, id)
+      .run();
+    const updated = await db.prepare("SELECT * FROM scenes WHERE id = ?").bind(id).first();
+    return json({ scene: updated });
+  }
+
+  // GET /api/rules
+  if (method === "GET" && pathname === "/api/rules") {
+    const result = await db.prepare("SELECT * FROM world_rules ORDER BY category, id").all();
+    return json({ rules: result.results });
+  }
+
+  // POST /api/rules
+  if (method === "POST" && pathname === "/api/rules") {
+    const body = await request.json() as Record<string, unknown>;
+    const result = await db
+      .prepare("INSERT INTO world_rules (category, rule_text, applies_from) VALUES (?, ?, ?)")
+      .bind(body.category, body.rule_text, body.applies_from ?? null)
+      .run();
+    return json({ id: result.meta.last_row_id }, 201);
+  }
+
+  // DELETE /api/rules/:id
+  const ruleMatch = pathname.match(/^\/api\/rules\/([^/]+)$/);
+  if (ruleMatch && method === "DELETE") {
+    await db.prepare("DELETE FROM world_rules WHERE id = ?").bind(ruleMatch[1]).run();
+    return json({ ok: true });
+  }
+
+  // GET /api/dashboard
+  if (method === "GET" && pathname === "/api/dashboard") {
+    const charCount = (await db.prepare("SELECT COUNT(*) as cnt FROM characters").first()) as { cnt: number };
+    const sceneCount = (await db.prepare("SELECT COUNT(*) as cnt FROM scenes").first()) as { cnt: number };
+    const writtenCount = (await db.prepare("SELECT COUNT(*) as cnt FROM scenes WHERE is_written = 1").first()) as { cnt: number };
+    const unwritten = (await db.prepare("SELECT id, title, narrative_order, story_time, location FROM scenes WHERE is_written = 0 ORDER BY narrative_order").all()).results;
+    return json({
+      character_count: charCount.cnt,
+      scene_count: sceneCount.cnt,
+      written_scene_count: writtenCount.cnt,
+      unwritten_scenes: unwritten,
+    });
+  }
+
+  return json({ error: "Not found" }, 404);
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
+    }
+
+    const url = new URL(request.url);
+
+    // REST API routes
+    if (url.pathname.startsWith("/api")) {
+      return handleApi(request, env, url.pathname, request.method);
     }
 
     // Streamable HTTP transport: single POST endpoint at /
@@ -281,9 +408,7 @@ export default {
 
     // Health check
     if (request.method === "GET") {
-      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.1.0", status: "ok" }), {
-        headers: { ...CORS, "Content-Type": "application/json" },
-      });
+      return json({ name: "novelsync-mcp", version: "0.1.0", status: "ok" });
     }
 
     return new Response("Method Not Allowed", { status: 405, headers: CORS });
