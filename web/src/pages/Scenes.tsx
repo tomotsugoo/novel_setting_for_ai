@@ -133,6 +133,26 @@ export default function Scenes() {
               </div>
             )}
 
+            {/* 主人公の自認キャラクター */}
+            <div className="text-sm">
+              <label className="block text-gray-500 mb-1">主人公の自認（意識レベル）</label>
+              <select
+                value={detailScene.protagonist_identity_id ?? ''}
+                onChange={async e => {
+                  const val = e.target.value || null;
+                  await api.scenes.update(detailScene.id, { protagonist_identity_id: val });
+                  setDetailScene({ ...detailScene, protagonist_identity_id: val });
+                  load();
+                }}
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">（未設定）</option>
+                {characters.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* 登場人物 */}
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-2">登場人物</h4>

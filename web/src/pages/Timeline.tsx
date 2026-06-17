@@ -76,6 +76,13 @@ export default function Timeline() {
                       </div>
                       {s.story_time && <p className="text-xs text-gray-400">⏱ {s.story_time}</p>}
                       {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+                      {s.protagonist_identity_id && (
+                        <p className="text-xs mt-1">
+                          <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                            🧠 {charName(s.protagonist_identity_id)}
+                          </span>
+                        </p>
+                      )}
                       {chars.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {chars.map(sc => (
