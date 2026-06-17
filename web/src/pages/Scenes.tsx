@@ -147,6 +147,22 @@ export default function Scenes() {
     } catch (e) { setError(String(e)); }
   };
 
+  const moveScene = async (idx: number, dir: -1 | 1, sorted: Scene[], e: React.MouseEvent) => {
+    e.stopPropagation();
+    const other = sorted[idx + dir];
+    const cur = sorted[idx];
+    if (!other) return;
+    const curOrder = cur.narrative_order ?? idx;
+    const otherOrder = other.narrative_order ?? idx + dir;
+    try {
+      await Promise.all([
+        api.scenes.update(cur.id, { narrative_order: otherOrder }),
+        api.scenes.update(other.id, { narrative_order: curOrder }),
+      ]);
+      load();
+    } catch (e) { setError(String(e)); }
+  };
+
   if (error) return <div className="text-red-500">Error: {error}</div>;
 
   return (
@@ -159,43 +175,59 @@ export default function Scenes() {
       </div>
       {scenes.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">シーンがありません</div>
-      ) : (
-        <div className="space-y-2">
-          {scenes.map(s => (
-            <div
-              key={s.id}
-              className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
-              onClick={() => openDetail(s)}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    {s.narrative_order != null && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded shrink-0">#{s.narrative_order}</span>
-                    )}
-                    <span className="font-medium text-gray-900 truncate">{s.title}</span>
+      ) : (() => {
+        const sorted = [...scenes].sort((a, b) => (a.narrative_order ?? 9999) - (b.narrative_order ?? 9999));
+        return (
+          <div className="space-y-2">
+            {sorted.map((s, idx) => (
+              <div
+                key={s.id}
+                className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
+                onClick={() => openDetail(s)}
+              >
+                <div className="flex items-start gap-2">
+                  {/* 上下ボタン */}
+                  <div className="flex flex-col gap-0.5 shrink-0 mt-0.5" onClick={e => e.stopPropagation()}>
+                    <button
+                      disabled={idx === 0}
+                      onClick={e => moveScene(idx, -1, sorted, e)}
+                      className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-20 text-xs"
+                    >▲</button>
+                    <button
+                      disabled={idx === sorted.length - 1}
+                      onClick={e => moveScene(idx, 1, sorted, e)}
+                      className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-20 text-xs"
+                    >▼</button>
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
-                    {s.story_time && <span>⏱ {s.story_time}</span>}
-                    {s.location && <span>📍 {s.location}</span>}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      {s.narrative_order != null && (
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded shrink-0">#{s.narrative_order}</span>
+                      )}
+                      <span className="font-medium text-gray-900 truncate">{s.title}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
+                      {s.story_time && <span>⏱ {s.story_time}</span>}
+                      {s.location && <span>📍 {s.location}</span>}
+                    </div>
                   </div>
+                  <button
+                    onClick={e => toggleWritten(s, e)}
+                    className={`shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${
+                      s.is_written
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : 'bg-white border-gray-300 text-gray-300'
+                    }`}
+                    title="クリックで執筆済み切替"
+                  >
+                    {s.is_written ? '✓' : ''}
+                  </button>
                 </div>
-                <button
-                  onClick={e => toggleWritten(s, e)}
-                  className={`shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${
-                    s.is_written
-                      ? 'bg-green-500 border-green-500 text-white'
-                      : 'bg-white border-gray-300 text-gray-300'
-                  }`}
-                  title="クリックで執筆済み切替"
-                >
-                  {s.is_written ? '✓' : ''}
-                </button>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
 
       {/* シーン詳細モーダル */}
       {detailScene && (
