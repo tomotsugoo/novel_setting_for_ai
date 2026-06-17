@@ -153,9 +153,9 @@ export default function Scenes() {
     const reordered = [...sorted];
     [reordered[idx], reordered[idx + dir]] = [reordered[idx + dir], reordered[idx]];
     try {
-      await Promise.all(
-        reordered.map((s, i) => api.scenes.update(s.id, { narrative_order: i + 1 }))
-      );
+      for (let i = 0; i < reordered.length; i++) {
+        await api.scenes.update(reordered[i].id, { narrative_order: i + 1 });
+      }
       load();
     } catch (e) { setError(String(e)); }
   };
