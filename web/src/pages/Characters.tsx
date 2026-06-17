@@ -132,20 +132,18 @@ export default function Characters() {
             <div className="flex items-center gap-4">
               <Avatar src={selected.avatar} name={selected.name} size="lg" />
               <div className="flex items-center gap-2 flex-wrap">
-                <label className={`px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {uploading ? 'アップロード中...' : '画像を変更'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={uploading}
-                    onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (file) handleAvatarUpload(file);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploading}
+                  className="text-xs text-gray-600 file:mr-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:text-xs file:bg-gray-100 file:text-gray-700 file:cursor-pointer"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAvatarUpload(file);
+                    e.target.value = '';
+                  }}
+                />
+                {uploading && <span className="text-xs text-gray-400">アップロード中...</span>}
                 {selected.avatar && (
                   <button
                     onClick={async () => {
