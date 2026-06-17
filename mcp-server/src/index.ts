@@ -497,7 +497,13 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           await env.DB.prepare(sql).run();
           results.push(`OK: ${sql.slice(0, 60)}...`);
         } catch (e) {
-          results.push(`ERR: ${String(e)}`);
+          const msg = String(e);
+          // カラム重複・テーブル既存は冪等なので警告扱い
+          if (msg.includes('duplicate column') || msg.includes('already exists')) {
+            results.push(`SKIP (already applied): ${sql.slice(0, 60)}...`);
+          } else {
+            results.push(`ERR: ${msg}`);
+          }
         }
       }
       return json({ results });
