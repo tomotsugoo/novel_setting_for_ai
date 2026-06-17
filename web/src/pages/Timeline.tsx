@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api, Scene, ConsciousnessSwap, Character, SceneCharacter } from '../api';
 
+function Avatar({ src, name }: { src: string | null; name: string }) {
+  if (src) return <img src={src} alt={name} className="w-6 h-6 rounded-full object-cover shrink-0" />;
+  return (
+    <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
+      {name.slice(0, 1)}
+    </div>
+  );
+}
+
 type TimelineItem =
   | { type: 'scene'; time: string; data: Scene }
   | { type: 'swap_start'; time: string; data: ConsciousnessSwap }
@@ -36,6 +45,7 @@ export default function Timeline() {
   }, []);
 
   const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
+  const charAvatar = (id: string) => characters.find(c => c.id === id)?.avatar ?? null;
 
   const items: TimelineItem[] = [];
   for (const s of scenes) {
@@ -77,16 +87,16 @@ export default function Timeline() {
                       {s.story_time && <p className="text-xs text-gray-400">⏱ {s.story_time}</p>}
                       {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
                       {s.protagonist_identity_id && (
-                        <p className="text-xs mt-1">
-                          <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                            🧠 {charName(s.protagonist_identity_id)}
-                          </span>
-                        </p>
+                        <div className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 pl-1 pr-2 py-0.5 rounded-full mt-1">
+                          <Avatar src={charAvatar(s.protagonist_identity_id)} name={charName(s.protagonist_identity_id)} />
+                          🧠 {charName(s.protagonist_identity_id)}
+                        </div>
                       )}
                       {chars.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {chars.map(sc => (
-                            <span key={sc.character_id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            <span key={sc.character_id} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 pl-1 pr-2 py-0.5 rounded-full">
+                              <Avatar src={charAvatar(sc.character_id)} name={sc.name} />
                               {sc.name}
                             </span>
                           ))}
@@ -110,14 +120,20 @@ export default function Timeline() {
                         {isStart ? '意識入れ替わり' : '自我回復'}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-800">
+                    <div className="flex items-center gap-1 text-sm text-gray-800 flex-wrap">
+                      <Avatar src={charAvatar(sw.from_character_id)} name={sw.from_name ?? charName(sw.from_character_id)} />
                       <span className="font-semibold text-indigo-600">{sw.from_name ?? charName(sw.from_character_id)}</span>
                       {isStart ? (
-                        <> の意識 → <span className="font-semibold text-red-600">{sw.to_name ?? charName(sw.to_character_id)}</span> の体へ</>
+                        <>
+                          <span> の意識 → </span>
+                          <Avatar src={charAvatar(sw.to_character_id)} name={sw.to_name ?? charName(sw.to_character_id)} />
+                          <span className="font-semibold text-red-600">{sw.to_name ?? charName(sw.to_character_id)}</span>
+                          <span> の体へ</span>
+                        </>
                       ) : (
-                        <> の自我が回復</>
+                        <span> の自我が回復</span>
                       )}
-                    </p>
+                    </div>
                     {isStart && sw.trigger_event && <p className="text-xs text-gray-500 mt-1">原因: {sw.trigger_event}</p>}
                   </div>
                 </div>
