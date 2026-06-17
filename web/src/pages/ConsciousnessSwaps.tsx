@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ConsciousnessSwap, Character, Scene } from '../api';
 import Modal from '../components/Modal';
+import { genId } from '../utils';
 
 export default function ConsciousnessSwaps() {
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
@@ -9,7 +10,7 @@ export default function ConsciousnessSwaps() {
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    id: '', from_character_id: '', to_character_id: '',
+    id: genId(), from_character_id: '', to_character_id: '',
     swapped_at_scene: '', resolved_at_scene: '',
     trigger_event: '', notes: '',
   });
@@ -50,7 +51,7 @@ export default function ConsciousnessSwaps() {
         notes: form.notes || undefined,
       });
       setShowAdd(false);
-      setForm({ id: '', from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', trigger_event: '', notes: '' });
+      setForm({ id: genId(), from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', trigger_event: '', notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -159,10 +160,6 @@ export default function ConsciousnessSwaps() {
       {showAdd && (
         <Modal title="意識の入れ替わりを記録" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ID (必須)</label>
-              <input required value={form.id} onChange={e => setForm({...form, id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="swap-erushii-fana-01" />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わった意識の持ち主（FROM）</label>
               <select required value={form.from_character_id} onChange={e => setForm({...form, from_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">

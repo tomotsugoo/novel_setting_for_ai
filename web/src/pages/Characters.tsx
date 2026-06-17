@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { api, Character } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
+import { genId } from '../utils';
 
 export default function Characters() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<Character | null>(null);
-  const [form, setForm] = useState({ id: '', name: '', role: 'supporting', description: '', secret: '' });
+  const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
@@ -19,7 +20,7 @@ export default function Characters() {
     try {
       await api.characters.create(form);
       setShowAdd(false);
-      setForm({ id: '', name: '', role: 'supporting', description: '', secret: '' });
+      setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
       load();
     } catch (e) {
       setError(String(e));
@@ -61,10 +62,6 @@ export default function Characters() {
       {showAdd && (
         <Modal title="キャラクター追加" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ID (必須)</label>
-              <input required value={form.id} onChange={e => setForm({...form, id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">名前 (必須)</label>
               <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />

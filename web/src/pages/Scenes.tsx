@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, Scene, Character, SceneCharacter } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
+import { genId } from '../utils';
 
 const roleInSceneLabels: Record<string, string> = {
   main: 'メイン', sub: 'サブ', mentioned: '言及のみ',
@@ -14,7 +15,7 @@ export default function Scenes() {
   const [detailScene, setDetailScene] = useState<Scene | null>(null);
   const [sceneChars, setSceneChars] = useState<SceneCharacter[]>([]);
   const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'sub', notes: '' });
-  const [form, setForm] = useState({ id: '', title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+  const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.scenes.list().then(r => setScenes(r.scenes)).catch((e: Error) => setError(e.message));
@@ -43,7 +44,7 @@ export default function Scenes() {
     try {
       await api.scenes.create({ ...form, narrative_order: form.narrative_order ? Number(form.narrative_order) : undefined });
       setShowAdd(false);
-      setForm({ id: '', title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+      setForm({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -187,10 +188,6 @@ export default function Scenes() {
       {showAdd && (
         <Modal title="シーン追加" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ID (必須)</label>
-              <input required value={form.id} onChange={e => setForm({...form, id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">タイトル (必須)</label>
               <input required value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />

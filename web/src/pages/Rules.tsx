@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, WorldRule } from '../api';
 import Modal from '../components/Modal';
+import { genId } from '../utils';
 
 const CATEGORIES = ['magic', 'physics', 'technology', 'society'];
 const CATEGORY_LABELS: Record<string, string> = {
@@ -10,7 +11,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function Rules() {
   const [rules, setRules] = useState<WorldRule[]>([]);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ id: '', category: 'magic', rule: '', applies_from: '' });
+  const [form, setForm] = useState({ id: genId(), category: 'magic', rule: '', applies_from: '' });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.rules.list().then(r => setRules(r.rules)).catch((e: Error) => setError(e.message));
@@ -31,7 +32,7 @@ export default function Rules() {
     try {
       await api.rules.create({ ...form, applies_from: form.applies_from || undefined });
       setShowAdd(false);
-      setForm({ id: '', category: 'magic', rule: '', applies_from: '' });
+      setForm({ id: genId(), category: 'magic', rule: '', applies_from: '' });
       load();
     } catch (e) {
       setError(String(e));
@@ -81,10 +82,6 @@ export default function Rules() {
       {showAdd && (
         <Modal title="ルール追加" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ID (必須)</label>
-              <input required value={form.id} onChange={e => setForm({...form, id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
-            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">カテゴリ</label>
               <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
