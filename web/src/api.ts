@@ -45,7 +45,7 @@ export const api = {
 export interface Character {
   id: string; name: string; aliases: string; role: string;
   is_twin: number; twin_of: string | null; secret: string | null;
-  description: string | null; created_at: string;
+  description: string | null; avatar: string | null; created_at: string;
 }
 export interface Scene {
   id: string; title: string; story_time: string | null;

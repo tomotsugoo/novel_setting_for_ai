@@ -1,8 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, Character } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
-import { genId } from '../utils';
+import { genId, resizeImageToBase64 } from '../utils';
+
+function Avatar({ src, name, size = 'md' }: { src: string | null; name: string; size?: 'sm' | 'md' | 'lg' }) {
+  const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-20 h-20 text-2xl' : 'w-10 h-10 text-sm';
+  if (src) return <img src={src} alt={name} className={`${sz} rounded-full object-cover shrink-0`} />;
+  return (
+    <div className={`${sz} rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0`}>
+      {name.slice(0, 1)}
+    </div>
+  );
+}
 
 export default function Characters() {
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -10,6 +20,8 @@ export default function Characters() {
   const [selected, setSelected] = useState<Character | null>(null);
   const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
 
@@ -24,6 +36,22 @@ export default function Characters() {
       load();
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!selected) return;
+    setUploading(true);
+    try {
+      const base64 = await resizeImageToBase64(file, 128);
+      await api.characters.update(selected.id, { avatar: base64 });
+      const updated = { ...selected, avatar: base64 };
+      setSelected(updated);
+      setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -47,13 +75,18 @@ export default function Characters() {
               onClick={() => setSelected(c)}
               className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
             >
-              <div className="flex items-center gap-2 mb-2">
-                <span className="font-semibold text-gray-900 flex-1">{c.name}</span>
-                <Badge role={c.role} />
+              <div className="flex items-center gap-3 mb-2">
+                <Avatar src={c.avatar} name={c.name} size="md" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 truncate">{c.name}</span>
+                    <Badge role={c.role} />
+                  </div>
+                  {c.description && (
+                    <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{c.description}</p>
+                  )}
+                </div>
               </div>
-              {c.description && (
-                <p className="text-sm text-gray-500 line-clamp-2">{c.description}</p>
-              )}
             </div>
           ))}
         </div>
@@ -92,8 +125,43 @@ export default function Characters() {
 
       {selected && (
         <Modal title={selected.name} onClose={() => setSelected(null)}>
-          <div className="space-y-3 text-sm">
-            <div><span className="font-medium text-gray-700">ID: </span><span className="text-gray-600">{selected.id}</span></div>
+          <div className="space-y-4 text-sm">
+            {/* アイコン */}
+            <div className="flex items-center gap-4">
+              <Avatar src={selected.avatar} name={selected.name} size="lg" />
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAvatarUpload(file);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 disabled:opacity-50"
+                >
+                  {uploading ? 'アップロード中...' : '画像を変更'}
+                </button>
+                {selected.avatar && (
+                  <button
+                    onClick={async () => {
+                      await api.characters.update(selected.id, { avatar: null });
+                      const updated = { ...selected, avatar: null };
+                      setSelected(updated);
+                      setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
+                    }}
+                    className="ml-2 px-3 py-1.5 text-xs text-red-400 hover:text-red-600"
+                  >削除</button>
+                )}
+              </div>
+            </div>
+
             <div><span className="font-medium text-gray-700">役割: </span><Badge role={selected.role} /></div>
             {selected.aliases && <div><span className="font-medium text-gray-700">別名: </span><span className="text-gray-600">{selected.aliases}</span></div>}
             {selected.description && <div><span className="font-medium text-gray-700">説明: </span><p className="text-gray-600 mt-1">{selected.description}</p></div>}

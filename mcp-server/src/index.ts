@@ -338,9 +338,11 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string};
-        await env.DB.prepare("UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret) WHERE id=?")
-          .bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, id).run();
+        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string;avatar?:string|null};
+        const hasAvatar = 'avatar' in (body as object);
+        await env.DB.prepare(
+          "UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret), avatar=CASE WHEN ?=1 THEN ? ELSE avatar END WHERE id=?"
+        ).bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, hasAvatar ? 1 : 0, body.avatar ?? null, id).run();
         return json({ ok: true });
       }
     }
@@ -478,6 +480,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         `DROP TABLE IF EXISTS consciousness_swaps`,
         `ALTER TABLE consciousness_swaps_new RENAME TO consciousness_swaps`,
         `ALTER TABLE scenes ADD COLUMN protagonist_identity_id TEXT REFERENCES characters(id)`,
+        `ALTER TABLE characters ADD COLUMN avatar TEXT`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',
