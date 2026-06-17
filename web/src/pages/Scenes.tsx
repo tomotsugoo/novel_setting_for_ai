@@ -22,22 +22,34 @@ function buildStoryTime(date: string, time: string): string {
   return `${date}T${time || '00:00'}:00`;
 }
 
+function nowStoryTime(): string {
+  const n = new Date();
+  const pad = (x: number) => String(x).padStart(2, '0');
+  return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:00`;
+}
+
 function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { date, time } = parseStoryTime(value);
   return (
-    <div className="flex gap-2">
-      <input
-        type="date"
-        value={date}
-        onChange={e => onChange(buildStoryTime(e.target.value, time))}
-        className="flex-1 border rounded-lg px-3 py-2 text-sm min-w-0"
-      />
-      <input
-        type="time"
-        value={time}
-        onChange={e => onChange(buildStoryTime(date, e.target.value))}
-        className="w-28 border rounded-lg px-3 py-2 text-sm"
-      />
+    <div className="space-y-1">
+      <div className="flex gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={e => onChange(buildStoryTime(e.target.value, time))}
+          className="flex-1 border rounded-lg px-3 py-2 text-sm min-w-0"
+        />
+        <input
+          type="time"
+          value={time}
+          onChange={e => onChange(buildStoryTime(date, e.target.value))}
+          className="w-28 border rounded-lg px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => onChange(nowStoryTime())} className="text-xs text-indigo-600 hover:text-indigo-800">現在日時をセット</button>
+        {value && <button type="button" onClick={() => onChange('')} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
+      </div>
     </div>
   );
 }
