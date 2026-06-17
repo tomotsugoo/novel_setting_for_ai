@@ -17,12 +17,12 @@ function parseStoryTime(s: string): StoryTime {
 }
 
 function formatStoryTime(t: StoryTime): string {
-  if (!t.year && !t.month && !t.day && !t.hour && !t.minute) return '';
-  const y = t.year.padStart(4, '0') || '0001';
+  if (t.year === '' && t.month === '' && t.day === '' && t.hour === '' && t.minute === '') return '';
+  const y = (t.year || '1').padStart(4, '0');
   const mo = (t.month || '1').padStart(2, '0');
   const d = (t.day || '1').padStart(2, '0');
-  const h = (t.hour || '0').padStart(2, '0');
-  const mi = (t.minute || '0').padStart(2, '0');
+  const h = (t.hour !== '' ? t.hour : '0').padStart(2, '0');
+  const mi = (t.minute !== '' ? t.minute : '0').padStart(2, '0');
   return `${y}-${mo}-${d}T${h}:${mi}:00`;
 }
 
@@ -32,7 +32,7 @@ function StoryTimeInput({ value, onChange }: { value: StoryTime; onChange: (v: S
       type="number"
       placeholder={placeholder}
       value={value[field]}
-      min={1}
+      min={0}
       max={max}
       onChange={e => onChange({ ...value, [field]: e.target.value })}
       className={`${width} border rounded-lg px-2 py-2 text-sm text-center`}
