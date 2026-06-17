@@ -10,7 +10,7 @@ export default function ConsciousnessSwaps() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: '', from_character_id: '', to_character_id: '',
-    swapped_at_scene: '', resolved_at_scene: '', is_suppressed: '1',
+    swapped_at_scene: '', resolved_at_scene: '',
     trigger_event: '', notes: '',
   });
 
@@ -46,12 +46,12 @@ export default function ConsciousnessSwaps() {
         to_character_id: form.to_character_id,
         swapped_at,
         resolved_at: resolved_at || undefined,
-        is_suppressed: Number(form.is_suppressed),
+        is_suppressed: 1,
         trigger_event: form.trigger_event || undefined,
         notes: form.notes || undefined,
       });
       setShowAdd(false);
-      setForm({ id: '', from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', is_suppressed: '1', trigger_event: '', notes: '' });
+      setForm({ id: '', from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', trigger_event: '', notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -101,9 +101,6 @@ export default function ConsciousnessSwaps() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       {active && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">進行中</span>}
-                      {swap.is_suppressed === 1 && active && (
-                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">自我抑圧中</span>
-                      )}
                     </div>
                     <p className="font-semibold text-gray-900">
                       <span className="text-indigo-600">{swap.from_name ?? charName(swap.from_character_id)}</span>
@@ -186,13 +183,6 @@ export default function ConsciousnessSwaps() {
               <select required value={form.swapped_at_scene} onChange={e => setForm({...form, swapped_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">シーンを選択</option>
                 {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">自我抑圧中？</label>
-              <select value={form.is_suppressed} onChange={e => setForm({...form, is_suppressed: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-                <option value="1">はい（元の意識は抑圧されている）</option>
-                <option value="0">いいえ（元の意識が表に出ている）</option>
               </select>
             </div>
             <div>
