@@ -65,7 +65,7 @@ export interface ConsciousnessSwap {
   from_character_id: string; from_name?: string;
   to_character_id: string; to_name?: string;
   swapped_at: string; resolved_at: string | null;
-  is_suppressed: number; trigger_event: string | null; notes: string | null;
+  trigger_event: string | null; notes: string | null;
 }
 export interface DashboardData {
   characters: number; scenes: number; written: number;

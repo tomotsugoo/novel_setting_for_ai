@@ -104,7 +104,6 @@ async function getConsciousness(db: D1Database, characterId: string, sceneTime?:
       type: "inhabited_by",
       owner_id: swapIn.owner_id,
       owner_name: swapIn.owner_name,
-      is_suppressed: swapIn.is_suppressed === 1,
       trigger_event: swapIn.trigger_event,
       notes: swapIn.notes,
       swapped_at: swapIn.swapped_at,
@@ -116,7 +115,6 @@ async function getConsciousness(db: D1Database, characterId: string, sceneTime?:
       type: "consciousness_displaced",
       current_body_id: swapOut.body_id,
       current_body_name: swapOut.body_name,
-      is_suppressed: swapOut.is_suppressed === 1,
       trigger_event: swapOut.trigger_event,
       notes: swapOut.notes,
       swapped_at: swapOut.swapped_at,
@@ -425,24 +423,24 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       if (method === 'POST') {
         const body = await request.json() as {
           id: string; from_character_id: string; to_character_id: string;
-          swapped_at: string; resolved_at?: string; is_suppressed?: number;
+          swapped_at: string; resolved_at?: string;
           trigger_event?: string; notes?: string;
         };
         await env.DB.prepare(
-          `INSERT INTO consciousness_swaps (id, from_character_id, to_character_id, swapped_at, resolved_at, is_suppressed, trigger_event, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO consciousness_swaps (id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           body.id, body.from_character_id, body.to_character_id,
           body.swapped_at, body.resolved_at ?? null,
-          body.is_suppressed ?? 1, body.trigger_event ?? null, body.notes ?? null
+          body.trigger_event ?? null, body.notes ?? null
         ).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {resolved_at?: string; is_suppressed?: number; notes?: string};
+        const body = await request.json() as {resolved_at?: string; notes?: string};
         await env.DB.prepare(
-          `UPDATE consciousness_swaps SET resolved_at=COALESCE(?,resolved_at), is_suppressed=COALESCE(?,is_suppressed), notes=COALESCE(?,notes) WHERE id=?`
-        ).bind(body.resolved_at ?? null, body.is_suppressed ?? null, body.notes ?? null, id).run();
+          `UPDATE consciousness_swaps SET resolved_at=COALESCE(?,resolved_at), notes=COALESCE(?,notes) WHERE id=?`
+        ).bind(body.resolved_at ?? null, body.notes ?? null, id).run();
         return json({ ok: true });
       }
       if (method === 'DELETE' && id) {
@@ -460,16 +458,19 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           notes TEXT,
           PRIMARY KEY (scene_id, character_id)
         )`,
-        `CREATE TABLE IF NOT EXISTS consciousness_swaps (
+        `CREATE TABLE IF NOT EXISTS consciousness_swaps_new (
           id TEXT PRIMARY KEY,
           from_character_id TEXT NOT NULL REFERENCES characters(id),
           to_character_id TEXT NOT NULL REFERENCES characters(id),
           swapped_at TEXT NOT NULL,
           resolved_at TEXT NULL,
-          is_suppressed INTEGER DEFAULT 1,
           trigger_event TEXT,
           notes TEXT
         )`,
+        `INSERT OR IGNORE INTO consciousness_swaps_new (id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes)
+         SELECT id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes FROM consciousness_swaps`,
+        `DROP TABLE IF EXISTS consciousness_swaps`,
+        `ALTER TABLE consciousness_swaps_new RENAME TO consciousness_swaps`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

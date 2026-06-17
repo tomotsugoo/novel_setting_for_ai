@@ -46,7 +46,6 @@ export default function ConsciousnessSwaps() {
         to_character_id: form.to_character_id,
         swapped_at,
         resolved_at: resolved_at || undefined,
-        is_suppressed: 1,
         trigger_event: form.trigger_event || undefined,
         notes: form.notes || undefined,
       });
@@ -66,7 +65,7 @@ export default function ConsciousnessSwaps() {
     const t = sceneTime(resolveSceneId);
     if (!t) { alert('シーンの物語時刻が取得できません'); return; }
     try {
-      await api.consciousnessSwaps.update(resolveSwap.id, { resolved_at: t, is_suppressed: 0 });
+      await api.consciousnessSwaps.update(resolveSwap.id, { resolved_at: t });
       setResolveSwap(null);
       setResolveSceneId('');
       load();
