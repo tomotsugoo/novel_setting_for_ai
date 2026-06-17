@@ -149,16 +149,13 @@ export default function Scenes() {
 
   const moveScene = async (idx: number, dir: -1 | 1, sorted: Scene[], e: React.MouseEvent) => {
     e.stopPropagation();
-    const other = sorted[idx + dir];
-    const cur = sorted[idx];
-    if (!other) return;
-    const curOrder = cur.narrative_order ?? idx;
-    const otherOrder = other.narrative_order ?? idx + dir;
+    if (idx + dir < 0 || idx + dir >= sorted.length) return;
+    const reordered = [...sorted];
+    [reordered[idx], reordered[idx + dir]] = [reordered[idx + dir], reordered[idx]];
     try {
-      await Promise.all([
-        api.scenes.update(cur.id, { narrative_order: otherOrder }),
-        api.scenes.update(other.id, { narrative_order: curOrder }),
-      ]);
+      await Promise.all(
+        reordered.map((s, i) => api.scenes.update(s.id, { narrative_order: i + 1 }))
+      );
       load();
     } catch (e) { setError(String(e)); }
   };
