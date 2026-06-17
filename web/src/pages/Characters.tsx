@@ -18,14 +18,21 @@ export default function Characters() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<Character | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', role: 'supporting', description: '', secret: '', aliases: '' });
   const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
 
   useEffect(() => { load(); }, []);
+
+  const openSelected = (c: Character) => {
+    setSelected(c);
+    setEditing(false);
+    setEditForm({ name: c.name, role: c.role, description: c.description ?? '', secret: c.secret ?? '', aliases: c.aliases ?? '' });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +41,20 @@ export default function Characters() {
       setShowAdd(false);
       setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
       load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected) return;
+    try {
+      await api.characters.update(selected.id, editForm);
+      const updated = { ...selected, ...editForm };
+      setSelected(updated);
+      setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
+      setEditing(false);
     } catch (e) {
       setError(String(e));
     }
@@ -74,7 +95,7 @@ export default function Characters() {
           {characters.map(c => (
             <div
               key={c.id}
-              onClick={() => setSelected(c)}
+              onClick={() => openSelected(c)}
               className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
             >
               <div className="flex items-center gap-3 mb-2">
@@ -162,10 +183,48 @@ export default function Characters() {
               </div>
             </div>
 
-            <div><span className="font-medium text-gray-700">役割: </span><Badge role={selected.role} /></div>
-            {selected.aliases && <div><span className="font-medium text-gray-700">別名: </span><span className="text-gray-600">{selected.aliases}</span></div>}
-            {selected.description && <div><span className="font-medium text-gray-700">説明: </span><p className="text-gray-600 mt-1">{selected.description}</p></div>}
-            {selected.secret && <div><span className="font-medium text-gray-700">秘密: </span><p className="text-gray-600 mt-1 bg-yellow-50 p-2 rounded">{selected.secret}</p></div>}
+            {editing ? (
+              <form onSubmit={handleEditSave} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">名前</label>
+                  <input required value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">役割</label>
+                  <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="protagonist">主人公</option>
+                    <option value="antagonist">敵</option>
+                    <option value="supporting">サブ</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">別名</label>
+                  <input value={editForm.aliases} onChange={e => setEditForm({...editForm, aliases: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
+                  <textarea value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">秘密</label>
+                  <textarea value={editForm.secret} onChange={e => setEditForm({...editForm, secret: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+                  <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">保存</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div><span className="font-medium text-gray-700">役割: </span><Badge role={selected.role} /></div>
+                {selected.aliases && <div><span className="font-medium text-gray-700">別名: </span><span className="text-gray-600">{selected.aliases}</span></div>}
+                {selected.description && <div><span className="font-medium text-gray-700">説明: </span><p className="text-gray-600 mt-1">{selected.description}</p></div>}
+                {selected.secret && <div><span className="font-medium text-gray-700">秘密: </span><p className="text-gray-600 mt-1 bg-yellow-50 p-2 rounded">{selected.secret}</p></div>}
+                <div className="flex justify-end pt-1">
+                  <button onClick={() => setEditing(true)} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">編集</button>
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}

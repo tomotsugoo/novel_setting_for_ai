@@ -16,6 +16,8 @@ export default function Scenes() {
   const [sceneChars, setSceneChars] = useState<SceneCharacter[]>([]);
   const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'sub', notes: '' });
   const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+  const [editingScene, setEditingScene] = useState(false);
+  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.scenes.list().then(r => setScenes(r.scenes)).catch((e: Error) => setError(e.message));
@@ -27,8 +29,32 @@ export default function Scenes() {
 
   const openDetail = async (scene: Scene) => {
     setDetailScene(scene);
+    setEditingScene(false);
+    setEditSceneForm({
+      title: scene.title,
+      story_time: scene.story_time ?? '',
+      narrative_order: scene.narrative_order != null ? String(scene.narrative_order) : '',
+      location: scene.location ?? '',
+      disclosure_notes: scene.disclosure_notes ?? '',
+    });
     const r = await api.sceneCharacters.list(scene.id);
     setSceneChars(r.scene_characters);
+  };
+
+  const handleEditScene = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detailScene) return;
+    try {
+      const data = {
+        ...editSceneForm,
+        narrative_order: editSceneForm.narrative_order ? Number(editSceneForm.narrative_order) : null,
+      };
+      await api.scenes.update(detailScene.id, data);
+      const updated = { ...detailScene, ...data };
+      setDetailScene(updated);
+      setScenes(ss => ss.map(s => s.id === detailScene.id ? updated : s));
+      setEditingScene(false);
+    } catch (e) { setError(String(e)); }
   };
 
   const toggleWritten = async (scene: Scene, e: React.MouseEvent) => {
@@ -122,15 +148,49 @@ export default function Scenes() {
       {detailScene && (
         <Modal title={detailScene.title} onClose={() => setDetailScene(null)}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><span className="text-gray-500">場所</span><p className="font-medium">{detailScene.location ?? '-'}</p></div>
-              <div><span className="text-gray-500">物語時間</span><p className="font-medium">{detailScene.story_time ?? '-'}</p></div>
-            </div>
-            {detailScene.disclosure_notes && (
-              <div className="text-sm">
-                <span className="text-gray-500">開示メモ</span>
-                <p className="mt-1 text-gray-700 bg-yellow-50 rounded p-2">{detailScene.disclosure_notes}</p>
-              </div>
+            {editingScene ? (
+              <form onSubmit={handleEditScene} className="space-y-3 text-sm">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">タイトル</label>
+                  <input required value={editSceneForm.title} onChange={e => setEditSceneForm({...editSceneForm, title: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">物語内時間</label>
+                  <input value={editSceneForm.story_time} onChange={e => setEditSceneForm({...editSceneForm, story_time: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例: 0001-01-01T12:00:00" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">物語上の順番</label>
+                  <input type="number" value={editSceneForm.narrative_order} onChange={e => setEditSceneForm({...editSceneForm, narrative_order: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">場所</label>
+                  <input value={editSceneForm.location} onChange={e => setEditSceneForm({...editSceneForm, location: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">開示メモ</label>
+                  <textarea value={editSceneForm.disclosure_notes} onChange={e => setEditSceneForm({...editSceneForm, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <button type="button" onClick={() => setEditingScene(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
+                  <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">保存</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">場所</span><p className="font-medium">{detailScene.location ?? '-'}</p></div>
+                  <div><span className="text-gray-500">物語時間</span><p className="font-medium">{detailScene.story_time ?? '-'}</p></div>
+                </div>
+                {detailScene.disclosure_notes && (
+                  <div className="text-sm">
+                    <span className="text-gray-500">開示メモ</span>
+                    <p className="mt-1 text-gray-700 bg-yellow-50 rounded p-2">{detailScene.disclosure_notes}</p>
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <button onClick={() => setEditingScene(true)} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">編集</button>
+                </div>
+              </>
             )}
 
             {/* 主人公の自認キャラクター */}
@@ -207,6 +267,7 @@ export default function Scenes() {
       )}
 
       {/* シーン追加モーダル */}
+
       {showAdd && (
         <Modal title="シーン追加" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
