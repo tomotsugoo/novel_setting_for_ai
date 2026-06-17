@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Character } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
@@ -21,7 +21,7 @@ export default function Characters() {
   const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
 
@@ -42,6 +42,7 @@ export default function Characters() {
   const handleAvatarUpload = async (file: File) => {
     if (!selected) return;
     setUploading(true);
+    setError(null);
     try {
       const base64 = await resizeImageToBase64(file, 128);
       await api.characters.update(selected.id, { avatar: base64 });
@@ -49,13 +50,14 @@ export default function Characters() {
       setSelected(updated);
       setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
     } catch (e) {
+      alert('画像アップロード失敗: ' + String(e));
       setError(String(e));
     } finally {
       setUploading(false);
     }
   };
 
-  if (error) return <div className="text-red-500">Error: {error}</div>;
+  if (error && !selected) return <div className="text-red-500">Error: {error}</div>;
 
   return (
     <div>
@@ -129,25 +131,21 @@ export default function Characters() {
             {/* アイコン */}
             <div className="flex items-center gap-4">
               <Avatar src={selected.avatar} name={selected.name} size="lg" />
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (file) handleAvatarUpload(file);
-                    e.target.value = '';
-                  }}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 disabled:opacity-50"
-                >
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className={`px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   {uploading ? 'アップロード中...' : '画像を変更'}
-                </button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAvatarUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
                 {selected.avatar && (
                   <button
                     onClick={async () => {
@@ -156,7 +154,7 @@ export default function Characters() {
                       setSelected(updated);
                       setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
                     }}
-                    className="ml-2 px-3 py-1.5 text-xs text-red-400 hover:text-red-600"
+                    className="px-3 py-1.5 text-xs text-red-400 hover:text-red-600"
                   >削除</button>
                 )}
               </div>
