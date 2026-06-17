@@ -8,60 +8,27 @@ const roleInSceneLabels: Record<string, string> = {
   main: 'メイン', sub: 'サブ', mentioned: '言及のみ',
 };
 
-type StoryTime = { year: string; month: string; day: string; hour: string; minute: string };
-
-function parseStoryTime(s: string): StoryTime {
+// DB形式 "0001-01-01T12:00:00" ↔ datetime-local形式 "0001-01-01T12:00"
+function toInputValue(s: string): string {
   const m = s.match(/^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/);
-  if (m) return { year: m[1], month: m[2], day: m[3], hour: m[4], minute: m[5] };
-  return { year: '', month: '', day: '', hour: '', minute: '' };
+  if (!m) return '';
+  return `${m[1].padStart(4, '0')}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}T${m[4].padStart(2, '0')}:${m[5].padStart(2, '0')}`;
 }
 
-function formatStoryTime(t: StoryTime): string {
-  if (t.year === '' && t.month === '' && t.day === '' && t.hour === '' && t.minute === '') return '';
-  const y = (t.year || '1').padStart(4, '0');
-  const mo = (t.month || '1').padStart(2, '0');
-  const d = (t.day || '1').padStart(2, '0');
-  const h = (t.hour !== '' ? t.hour : '0').padStart(2, '0');
-  const mi = (t.minute !== '' ? t.minute : '0').padStart(2, '0');
-  return `${y}-${mo}-${d}T${h}:${mi}:00`;
+function fromInputValue(s: string): string {
+  return s ? `${s}:00` : '';
 }
 
-function StoryTimeInput({ value, onChange }: { value: StoryTime; onChange: (v: StoryTime) => void }) {
-  const num = (field: keyof StoryTime, placeholder: string, max?: number, width = 'w-14') => (
+function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
     <input
-      type="number"
-      placeholder={placeholder}
-      value={value[field]}
-      min={0}
-      max={max}
-      onChange={e => onChange({ ...value, [field]: e.target.value })}
-      className={`${width} border rounded-lg px-2 py-2 text-sm text-center`}
+      type="datetime-local"
+      value={toInputValue(value)}
+      onChange={e => onChange(fromInputValue(e.target.value))}
+      className="w-full border rounded-lg px-3 py-2 text-sm"
     />
   );
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1 flex-wrap">
-        {num('year', '年', undefined, 'w-20')}
-        <span className="text-gray-500 text-sm">年</span>
-        {num('month', '月', 12)}
-        <span className="text-gray-500 text-sm">月</span>
-        {num('day', '日', 31)}
-        <span className="text-gray-500 text-sm">日</span>
-      </div>
-      <div className="flex items-center gap-1">
-        {num('hour', '時', 23)}
-        <span className="text-gray-500 text-sm">時</span>
-        {num('minute', '分', 59)}
-        <span className="text-gray-500 text-sm">分</span>
-      </div>
-      {formatStoryTime(value) && (
-        <p className="text-xs text-gray-400">→ {formatStoryTime(value)}</p>
-      )}
-    </div>
-  );
 }
-
-const emptyTime = (): StoryTime => ({ year: '', month: '', day: '', hour: '', minute: '' });
 
 export default function Scenes() {
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -70,9 +37,9 @@ export default function Scenes() {
   const [detailScene, setDetailScene] = useState<Scene | null>(null);
   const [sceneChars, setSceneChars] = useState<SceneCharacter[]>([]);
   const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'sub', notes: '' });
-  const [form, setForm] = useState({ id: genId(), title: '', story_time: emptyTime(), narrative_order: '', location: '', disclosure_notes: '' });
+  const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [editingScene, setEditingScene] = useState(false);
-  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: emptyTime(), narrative_order: '', location: '', disclosure_notes: '' });
+  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.scenes.list().then(r => setScenes(r.scenes)).catch((e: Error) => setError(e.message));
@@ -87,7 +54,7 @@ export default function Scenes() {
     setEditingScene(false);
     setEditSceneForm({
       title: scene.title,
-      story_time: scene.story_time ? parseStoryTime(scene.story_time) : emptyTime(),
+      story_time: scene.story_time ?? '',
       narrative_order: scene.narrative_order != null ? String(scene.narrative_order) : '',
       location: scene.location ?? '',
       disclosure_notes: scene.disclosure_notes ?? '',
@@ -102,7 +69,7 @@ export default function Scenes() {
     try {
       const data = {
         title: editSceneForm.title,
-        story_time: formatStoryTime(editSceneForm.story_time) || null,
+        story_time: editSceneForm.story_time || null,
         narrative_order: editSceneForm.narrative_order ? Number(editSceneForm.narrative_order) : null,
         location: editSceneForm.location || null,
         disclosure_notes: editSceneForm.disclosure_notes || null,
@@ -128,11 +95,11 @@ export default function Scenes() {
     try {
       await api.scenes.create({
         ...form,
-        story_time: formatStoryTime(form.story_time) || undefined,
+        story_time: form.story_time || undefined,
         narrative_order: form.narrative_order ? Number(form.narrative_order) : undefined,
       });
       setShowAdd(false);
-      setForm({ id: genId(), title: '', story_time: emptyTime(), narrative_order: '', location: '', disclosure_notes: '' });
+      setForm({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
