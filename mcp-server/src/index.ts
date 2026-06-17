@@ -237,14 +237,99 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id",
 };
 
+async function handleRestApi(request: Request, env: Env, url: URL): Promise<Response> {
+  const parts = url.pathname.split('/').filter(Boolean); // ['api', 'characters', 'id']
+  const resource = parts[1];
+  const id = parts[2];
+  const method = request.method;
+
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+  try {
+    if (resource === 'dashboard') {
+      const charCount = await env.DB.prepare("SELECT COUNT(*) as n FROM characters").first<{n:number}>();
+      const sceneCount = await env.DB.prepare("SELECT COUNT(*) as n FROM scenes").first<{n:number}>();
+      const writtenCount = await env.DB.prepare("SELECT COUNT(*) as n FROM scenes WHERE is_written = 1").first<{n:number}>();
+      const unwritten = await env.DB.prepare("SELECT id, title, narrative_order FROM scenes WHERE is_written = 0 ORDER BY narrative_order ASC").all();
+      return json({ characters: charCount?.n ?? 0, scenes: sceneCount?.n ?? 0, written: writtenCount?.n ?? 0, unwritten_scenes: unwritten.results });
+    }
+
+    if (resource === 'characters') {
+      if (method === 'GET') {
+        const result = await env.DB.prepare("SELECT * FROM characters ORDER BY name").all();
+        return json({ characters: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {id:string;name:string;aliases?:string;role?:string;description?:string;secret?:string};
+        await env.DB.prepare("INSERT INTO characters (id, name, aliases, role, description, secret) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(body.id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string};
+        await env.DB.prepare("UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret) WHERE id=?")
+          .bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, id).run();
+        return json({ ok: true });
+      }
+    }
+
+    if (resource === 'scenes') {
+      if (method === 'GET') {
+        const result = await env.DB.prepare("SELECT * FROM scenes ORDER BY narrative_order ASC").all();
+        return json({ scenes: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {id:string;title:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string};
+        await env.DB.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(body.id, body.title, body.story_time ?? null, body.narrative_order ?? null, body.location ?? null, body.disclosure_notes ?? null).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number};
+        await env.DB.prepare("UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written) WHERE id=?")
+          .bind(body.title ?? null, body.story_time ?? null, body.narrative_order ?? null, body.location ?? null, body.disclosure_notes ?? null, body.is_written ?? null, id).run();
+        return json({ ok: true });
+      }
+    }
+
+    if (resource === 'rules') {
+      if (method === 'GET') {
+        const result = await env.DB.prepare("SELECT * FROM world_rules ORDER BY category").all();
+        return json({ rules: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {id:string;category:string;rule:string;applies_from?:string};
+        await env.DB.prepare("INSERT INTO world_rules (id, category, rule, applies_from) VALUES (?, ?, ?, ?)")
+          .bind(body.id, body.category, body.rule, body.applies_from ?? null).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE' && id) {
+        await env.DB.prepare("DELETE FROM world_rules WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
+    return json({ error: 'Not found' }, 404);
+  } catch (err) {
+    return json({ error: String(err) }, 500);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
+    }
+
+    if (url.pathname.startsWith('/api')) {
+      return handleRestApi(request, env, url);
     }
 
     // Streamable HTTP transport: single POST endpoint at /
