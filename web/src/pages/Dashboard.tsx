@@ -17,18 +17,18 @@ export default function Dashboard() {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">ダッシュボード</h2>
-      <div className="grid grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow p-6">
-          <div className="text-sm text-gray-500 mb-1">キャラクター数</div>
-          <div className="text-3xl font-bold text-indigo-600">{data.characters}</div>
+      <div className="grid grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8">
+        <div className="bg-white rounded-xl shadow p-3 md:p-6">
+          <div className="text-xs md:text-sm text-gray-500 mb-1">キャラクター数</div>
+          <div className="text-2xl md:text-3xl font-bold text-indigo-600">{data.characters}</div>
         </div>
-        <div className="bg-white rounded-xl shadow p-6">
-          <div className="text-sm text-gray-500 mb-1">シーン数</div>
-          <div className="text-3xl font-bold text-indigo-600">{data.scenes}</div>
+        <div className="bg-white rounded-xl shadow p-3 md:p-6">
+          <div className="text-xs md:text-sm text-gray-500 mb-1">シーン数</div>
+          <div className="text-2xl md:text-3xl font-bold text-indigo-600">{data.scenes}</div>
         </div>
-        <div className="bg-white rounded-xl shadow p-6">
-          <div className="text-sm text-gray-500 mb-1">執筆済みシーン</div>
-          <div className="text-3xl font-bold text-green-600">{data.written}</div>
+        <div className="bg-white rounded-xl shadow p-3 md:p-6">
+          <div className="text-xs md:text-sm text-gray-500 mb-1">執筆済み</div>
+          <div className="text-2xl md:text-3xl font-bold text-green-600">{data.written}</div>
         </div>
       </div>
       <div className="bg-white rounded-xl shadow p-6">

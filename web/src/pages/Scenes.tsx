@@ -77,35 +77,45 @@ export default function Scenes() {
           + シーン追加
         </button>
       </div>
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">#</th>
-              <th className="px-4 py-3 text-left">タイトル</th>
-              <th className="px-4 py-3 text-left">物語時間</th>
-              <th className="px-4 py-3 text-left">場所</th>
-              <th className="px-4 py-3 text-center">執筆済</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {scenes.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => openDetail(s)}>
-                <td className="px-4 py-3 text-gray-500">{s.narrative_order ?? '-'}</td>
-                <td className="px-4 py-3 font-medium text-gray-900">{s.title}</td>
-                <td className="px-4 py-3 text-gray-500">{s.story_time ?? '-'}</td>
-                <td className="px-4 py-3 text-gray-500">{s.location ?? '-'}</td>
-                <td className="px-4 py-3 text-center">
-                  <button onClick={e => toggleWritten(s, e)} className="text-lg" title="クリックで切替">
-                    {s.is_written ? '✓' : '-'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {scenes.length === 0 && <p className="text-gray-500 text-center py-8">シーンがありません</p>}
-      </div>
+      {scenes.length === 0 ? (
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">シーンがありません</div>
+      ) : (
+        <div className="space-y-2">
+          {scenes.map(s => (
+            <div
+              key={s.id}
+              className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
+              onClick={() => openDetail(s)}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    {s.narrative_order != null && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded shrink-0">#{s.narrative_order}</span>
+                    )}
+                    <span className="font-medium text-gray-900 truncate">{s.title}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
+                    {s.story_time && <span>⏱ {s.story_time}</span>}
+                    {s.location && <span>📍 {s.location}</span>}
+                  </div>
+                </div>
+                <button
+                  onClick={e => toggleWritten(s, e)}
+                  className={`shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${
+                    s.is_written
+                      ? 'bg-green-500 border-green-500 text-white'
+                      : 'bg-white border-gray-300 text-gray-300'
+                  }`}
+                  title="クリックで執筆済み切替"
+                >
+                  {s.is_written ? '✓' : ''}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* シーン詳細モーダル */}
       {detailScene && (
@@ -145,7 +155,7 @@ export default function Scenes() {
               )}
 
               {/* 登場人物追加フォーム */}
-              <form onSubmit={handleAddChar} className="mt-3 flex gap-2 flex-wrap">
+              <form onSubmit={handleAddChar} className="mt-3 flex flex-col sm:flex-row gap-2">
                 <select
                   value={addCharForm.character_id}
                   onChange={e => setAddCharForm({...addCharForm, character_id: e.target.value})}

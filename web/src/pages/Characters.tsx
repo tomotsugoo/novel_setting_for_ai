@@ -36,27 +36,27 @@ export default function Characters() {
           + キャラクター追加
         </button>
       </div>
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="px-4 py-3 text-left">名前</th>
-              <th className="px-4 py-3 text-left">役割</th>
-              <th className="px-4 py-3 text-left">説明</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {characters.map(c => (
-              <tr key={c.id} onClick={() => setSelected(c)} className="hover:bg-gray-50 cursor-pointer">
-                <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                <td className="px-4 py-3"><Badge role={c.role} /></td>
-                <td className="px-4 py-3 text-gray-500">{c.description ? c.description.slice(0, 50) + (c.description.length > 50 ? '...' : '') : '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {characters.length === 0 && <p className="text-gray-500 text-center py-8">キャラクターがいません</p>}
-      </div>
+      {characters.length === 0 ? (
+        <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">キャラクターがいません</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {characters.map(c => (
+            <div
+              key={c.id}
+              onClick={() => setSelected(c)}
+              className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-semibold text-gray-900 flex-1">{c.name}</span>
+                <Badge role={c.role} />
+              </div>
+              {c.description && (
+                <p className="text-sm text-gray-500 line-clamp-2">{c.description}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {showAdd && (
         <Modal title="キャラクター追加" onClose={() => setShowAdd(false)}>
