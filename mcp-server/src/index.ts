@@ -470,6 +470,15 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           trigger_event TEXT,
           notes TEXT
         )`,
+        `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
+         VALUES (
+           'hoshifune-inori',
+           '星船イノリ',
+           '',
+           'protagonist',
+           '日本の大学生。異世界に召喚された際に死亡。',
+           '異世界召喚時に死亡しており、意識は別の体に移っている可能性がある。'
+         )`,
       ];
       const results: string[] = [];
       for (const sql of migrations) {
