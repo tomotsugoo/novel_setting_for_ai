@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Scene, ConsciousnessSwap, Character } from '../api';
+import { api, Scene, ConsciousnessSwap, Character, SceneCharacter } from '../api';
 
 type TimelineItem =
   | { type: 'scene'; time: string; data: Scene }
@@ -10,6 +10,7 @@ export default function Timeline() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [sceneCharsMap, setSceneCharsMap] = useState<Record<string, SceneCharacter[]>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,10 +18,20 @@ export default function Timeline() {
       api.scenes.list(),
       api.consciousnessSwaps.list(),
       api.characters.list(),
-    ]).then(([s, sw, c]) => {
+    ]).then(async ([s, sw, c]) => {
       setScenes(s.scenes);
       setSwaps(sw.swaps);
       setCharacters(c.characters);
+      const map: Record<string, SceneCharacter[]> = {};
+      await Promise.all(s.scenes.map(async scene => {
+        try {
+          const r = await api.sceneCharacters.list(scene.id);
+          map[scene.id] = r.scene_characters;
+        } catch {
+          map[scene.id] = [];
+        }
+      }));
+      setSceneCharsMap(map);
     }).catch((e: Error) => setError(e.message));
   }, []);
 
@@ -50,6 +61,7 @@ export default function Timeline() {
             {items.map((item, i) => {
               if (item.type === 'scene') {
                 const s = item.data;
+                const chars = sceneCharsMap[s.id] ?? [];
                 return (
                   <div key={`scene-${s.id}`} className="relative flex items-start gap-4">
                     <div className="relative z-10 flex items-center justify-center w-16 h-16 shrink-0">
@@ -64,6 +76,15 @@ export default function Timeline() {
                       </div>
                       {s.story_time && <p className="text-xs text-gray-400">⏱ {s.story_time}</p>}
                       {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+                      {chars.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {chars.map(sc => (
+                            <span key={sc.character_id} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                              {sc.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
