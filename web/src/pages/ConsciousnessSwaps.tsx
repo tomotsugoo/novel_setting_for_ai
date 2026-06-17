@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { api, ConsciousnessSwap, Character } from '../api';
+import { api, ConsciousnessSwap, Character, Scene } from '../api';
 import Modal from '../components/Modal';
 
 export default function ConsciousnessSwaps() {
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: '', from_character_id: '', to_character_id: '',
-    swapped_at: '', resolved_at: '', is_suppressed: '1',
+    swapped_at_scene: '', resolved_at_scene: '', is_suppressed: '1',
     trigger_event: '', notes: '',
   });
 
@@ -18,13 +19,20 @@ export default function ConsciousnessSwaps() {
   useEffect(() => {
     load();
     api.characters.list().then(r => setCharacters(r.characters));
+    api.scenes.list().then(r => setScenes(r.scenes));
   }, []);
 
   const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
+  const sceneTime = (sceneId: string) => scenes.find(s => s.id === sceneId)?.story_time ?? '';
+  const sceneLabel = (s: Scene) => `#${s.narrative_order} ${s.title}`;
 
-  const handleResolve = async (swap: ConsciousnessSwap, resolvedAt: string) => {
+  const handleResolve = async (swap: ConsciousnessSwap) => {
+    const sceneId = prompt('自我回復シーンのIDを入力（またはキャンセル）');
+    if (!sceneId) return;
+    const t = sceneTime(sceneId);
+    if (!t) { alert('シーンが見つかりません'); return; }
     try {
-      await api.consciousnessSwaps.update(swap.id, { resolved_at: resolvedAt, is_suppressed: 0 });
+      await api.consciousnessSwaps.update(swap.id, { resolved_at: t, is_suppressed: 0 });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -39,16 +47,39 @@ export default function ConsciousnessSwaps() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const swapped_at = sceneTime(form.swapped_at_scene);
+    if (!swapped_at) { setError('シーンの物語時刻が取得できません'); return; }
+    const resolved_at = form.resolved_at_scene ? sceneTime(form.resolved_at_scene) : undefined;
     try {
       await api.consciousnessSwaps.create({
-        ...form,
+        id: form.id,
+        from_character_id: form.from_character_id,
+        to_character_id: form.to_character_id,
+        swapped_at,
+        resolved_at: resolved_at || undefined,
         is_suppressed: Number(form.is_suppressed),
-        resolved_at: form.resolved_at || undefined,
         trigger_event: form.trigger_event || undefined,
         notes: form.notes || undefined,
       });
       setShowAdd(false);
-      setForm({ id: '', from_character_id: '', to_character_id: '', swapped_at: '', resolved_at: '', is_suppressed: '1', trigger_event: '', notes: '' });
+      setForm({ id: '', from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', is_suppressed: '1', trigger_event: '', notes: '' });
+      load();
+    } catch (e) { setError(String(e)); }
+  };
+
+  // 自我回復をシーン選択で行うモーダル用
+  const [resolveSwap, setResolveSwap] = useState<ConsciousnessSwap | null>(null);
+  const [resolveSceneId, setResolveSceneId] = useState('');
+
+  const handleResolveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resolveSwap) return;
+    const t = sceneTime(resolveSceneId);
+    if (!t) { alert('シーンの物語時刻が取得できません'); return; }
+    try {
+      await api.consciousnessSwaps.update(resolveSwap.id, { resolved_at: t, is_suppressed: 0 });
+      setResolveSwap(null);
+      setResolveSceneId('');
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -73,6 +104,8 @@ export default function ConsciousnessSwaps() {
         <div className="space-y-4">
           {swaps.map(swap => {
             const active = !swap.resolved_at;
+            const fromScene = scenes.find(s => s.story_time === swap.swapped_at);
+            const toScene = swap.resolved_at ? scenes.find(s => s.story_time === swap.resolved_at) : null;
             return (
               <div key={swap.id} className={`bg-white rounded-xl shadow p-5 border-l-4 ${active ? 'border-red-400' : 'border-gray-300'}`}>
                 <div className="flex items-start justify-between">
@@ -93,17 +126,16 @@ export default function ConsciousnessSwaps() {
                     {swap.trigger_event && <p className="text-sm text-gray-500 mt-1">原因: {swap.trigger_event}</p>}
                     {swap.notes && <p className="text-sm text-gray-400 mt-1">{swap.notes}</p>}
                     <p className="text-xs text-gray-400 mt-2">
-                      開始: {swap.swapped_at}
-                      {swap.resolved_at && <span className="ml-3">解消: {swap.resolved_at}</span>}
+                      開始シーン: {fromScene ? sceneLabel(fromScene) : swap.swapped_at}
+                      {swap.resolved_at && (
+                        <span className="ml-3">解消シーン: {toScene ? sceneLabel(toScene) : swap.resolved_at}</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex gap-2 ml-4 flex-shrink-0">
                     {active && (
                       <button
-                        onClick={() => {
-                          const t = prompt('自我回復の物語内時刻を入力（例: 0001-01-02T06:00:00）');
-                          if (t) handleResolve(swap, t);
-                        }}
+                        onClick={() => setResolveSwap(swap)}
                         className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
                       >自我回復</button>
                     )}
@@ -116,6 +148,29 @@ export default function ConsciousnessSwaps() {
         </div>
       )}
 
+      {/* 自我回復モーダル */}
+      {resolveSwap && (
+        <Modal title="自我回復を記録" onClose={() => setResolveSwap(null)}>
+          <form onSubmit={handleResolveSubmit} className="space-y-4">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold">{resolveSwap.from_name ?? charName(resolveSwap.from_character_id)}</span> の自我が回復するシーンを選択してください。
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">自我回復シーン</label>
+              <select required value={resolveSceneId} onChange={e => setResolveSceneId(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">シーンを選択</option>
+                {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={() => setResolveSwap(null)} className="px-4 py-2 text-sm text-gray-600">キャンセル</button>
+              <button type="submit" className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">記録する</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* 入れ替わり追加モーダル */}
       {showAdd && (
         <Modal title="意識の入れ替わりを記録" onClose={() => setShowAdd(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -138,8 +193,11 @@ export default function ConsciousnessSwaps() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わった物語内時刻</label>
-              <input required value={form.swapped_at} onChange={e => setForm({...form, swapped_at: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="0001-01-02T00:00:00" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わったシーン</label>
+              <select required value={form.swapped_at_scene} onChange={e => setForm({...form, swapped_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">シーンを選択</option>
+                {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">自我抑圧中？</label>
