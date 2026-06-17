@@ -6,6 +6,7 @@ const navItems = [
   { to: "/scenes", label: "シーン" },
   { to: "/timeline", label: "タイムライン" },
   { to: "/rules", label: "世界ルール" },
+  { to: "/migrate", label: "🔧 マイグレーション" },
 ];
 
 export default function Sidebar() {

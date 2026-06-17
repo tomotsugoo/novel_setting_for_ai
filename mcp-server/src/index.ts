@@ -314,6 +314,56 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    if (resource === 'scene_characters') {
+      if (method === 'GET') {
+        const sceneId = parts[2];
+        if (sceneId) {
+          const result = await env.DB.prepare(
+            `SELECT sc.*, c.name, c.role FROM scene_characters sc JOIN characters c ON sc.character_id = c.id WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
+          ).bind(sceneId).all();
+          return json({ scene_characters: result.results });
+        }
+        const result = await env.DB.prepare("SELECT * FROM scene_characters").all();
+        return json({ scene_characters: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {scene_id:string;character_id:string;role_in_scene?:string;notes?:string};
+        await env.DB.prepare("INSERT OR REPLACE INTO scene_characters (scene_id, character_id, role_in_scene, notes) VALUES (?, ?, ?, ?)")
+          .bind(body.scene_id, body.character_id, body.role_in_scene ?? 'sub', body.notes ?? null).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE') {
+        const sceneId = parts[2];
+        const characterId = parts[3];
+        if (sceneId && characterId) {
+          await env.DB.prepare("DELETE FROM scene_characters WHERE scene_id=? AND character_id=?").bind(sceneId, characterId).run();
+          return json({ ok: true });
+        }
+      }
+    }
+
+    if (resource === 'migrate' && method === 'POST') {
+      const migrations: string[] = [
+        `CREATE TABLE IF NOT EXISTS scene_characters (
+          scene_id TEXT NOT NULL REFERENCES scenes(id),
+          character_id TEXT NOT NULL REFERENCES characters(id),
+          role_in_scene TEXT CHECK(role_in_scene IN ('main','sub','mentioned')) DEFAULT 'sub',
+          notes TEXT,
+          PRIMARY KEY (scene_id, character_id)
+        )`,
+      ];
+      const results: string[] = [];
+      for (const sql of migrations) {
+        try {
+          await env.DB.prepare(sql).run();
+          results.push(`OK: ${sql.slice(0, 60)}...`);
+        } catch (e) {
+          results.push(`ERR: ${String(e)}`);
+        }
+      }
+      return json({ results });
+    }
+
     return json({ error: 'Not found' }, 404);
   } catch (err) {
     return json({ error: String(err) }, 500);

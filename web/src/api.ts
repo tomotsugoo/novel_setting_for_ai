@@ -26,6 +26,14 @@ export const api = {
     create: (data: Partial<WorldRule>) => apiFetch('/api/rules', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/rules/${id}`, { method: 'DELETE' }),
   },
+  sceneCharacters: {
+    list: (sceneId: string) => apiFetch<{scene_characters: SceneCharacter[]}>(`/api/scene_characters/${sceneId}`),
+    add: (data: {scene_id: string; character_id: string; role_in_scene: string; notes?: string}) =>
+      apiFetch('/api/scene_characters', { method: 'POST', body: JSON.stringify(data) }),
+    remove: (sceneId: string, characterId: string) =>
+      apiFetch(`/api/scene_characters/${sceneId}/${characterId}`, { method: 'DELETE' }),
+  },
+  migrate: () => apiFetch<{results: string[]}>('/api/migrate', { method: 'POST' }),
 };
 
 export interface Character {
@@ -41,6 +49,10 @@ export interface Scene {
 }
 export interface WorldRule {
   id: string; category: string; rule: string; applies_from: string | null;
+}
+export interface SceneCharacter {
+  scene_id: string; character_id: string; role_in_scene: string;
+  notes: string | null; name: string; role: string;
 }
 export interface DashboardData {
   characters: number; scenes: number; written: number;

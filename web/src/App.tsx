@@ -6,6 +6,7 @@ import Characters from "./pages/Characters";
 import Scenes from "./pages/Scenes";
 import Timeline from "./pages/Timeline";
 import Rules from "./pages/Rules";
+import Migrate from "./pages/Migrate";
 import Login from "./pages/Login";
 import { isAuthenticated } from "./auth";
 
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/scenes" element={<Scenes />} />
             <Route path="/timeline" element={<Timeline />} />
             <Route path="/rules" element={<Rules />} />
+            <Route path="/migrate" element={<Migrate />} />
           </Routes>
         </main>
       </div>
