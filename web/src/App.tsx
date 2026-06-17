@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
@@ -5,8 +6,16 @@ import Characters from "./pages/Characters";
 import Scenes from "./pages/Scenes";
 import Timeline from "./pages/Timeline";
 import Rules from "./pages/Rules";
+import Login from "./pages/Login";
+import { isAuthenticated } from "./auth";
 
 export default function App() {
+  const [authed, setAuthed] = useState(isAuthenticated());
+
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />;
+  }
+
   return (
     <BrowserRouter basename="/novel_setting_for_ai">
       <div className="flex h-screen bg-gray-100">
