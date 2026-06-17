@@ -138,11 +138,13 @@ export default function Scenes() {
               <label className="block text-gray-500 mb-1">主人公の自認（意識レベル）</label>
               <select
                 value={detailScene.protagonist_identity_id ?? ''}
-                onChange={async e => {
+                onChange={e => {
                   const val = e.target.value || null;
-                  await api.scenes.update(detailScene.id, { protagonist_identity_id: val });
-                  setDetailScene({ ...detailScene, protagonist_identity_id: val });
-                  load();
+                  const updated = { ...detailScene, protagonist_identity_id: val };
+                  setDetailScene(updated);
+                  api.scenes.update(detailScene.id, { protagonist_identity_id: val })
+                    .then(() => load())
+                    .catch(err => setError(String(err)));
                 }}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               >
