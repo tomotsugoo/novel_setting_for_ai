@@ -336,7 +336,7 @@ export default function Scenes() {
               >
                 <option value="">（未設定）</option>
                 {characters.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}{c.aliases ? `（${c.aliases}）` : ''}</option>
                 ))}
               </select>
             </div>
@@ -373,7 +373,7 @@ export default function Scenes() {
                 >
                   <option value="">キャラクターを選択</option>
                   {characters.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{c.name}{c.aliases ? `（${c.aliases}）` : ''}</option>
                   ))}
                 </select>
                 <select
