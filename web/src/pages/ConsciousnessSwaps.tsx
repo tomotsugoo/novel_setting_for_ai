@@ -254,7 +254,7 @@ export default function ConsciousnessSwaps() {
       {/* 入れ替わり追加モーダル */}
       {showAdd && (
         <Modal title="意識の入れ替わりを記録" onClose={() => setShowAdd(false)}>
-          <SwapForm f={form} setF={setForm} onSubmit={handleSubmit} onClose={() => setShowAdd(false)} submitLabel="記録する" />
+          <SwapForm f={form} setF={v => setForm({ ...v, id: form.id })} onSubmit={handleSubmit} onClose={() => setShowAdd(false)} submitLabel="記録する" />
         </Modal>
       )}
     </div>
