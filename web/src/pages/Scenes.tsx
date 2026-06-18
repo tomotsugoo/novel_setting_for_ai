@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, Scene, Character, SceneCharacter } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
@@ -30,27 +30,44 @@ function nowStoryTime(): string {
 
 function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { date, time } = parseStoryTime(value);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
+
+  const setNow = () => {
+    const now = nowStoryTime();
+    const { date: d, time: t } = parseStoryTime(now);
+    if (dateRef.current) dateRef.current.value = d;
+    if (timeRef.current) timeRef.current.value = t;
+    onChange(now);
+  };
+
+  const clear = () => {
+    if (dateRef.current) dateRef.current.value = '';
+    if (timeRef.current) timeRef.current.value = '';
+    onChange('');
+  };
+
   return (
     <div className="space-y-1">
       <div className="flex gap-2">
         <input
-          key={`date-${date}`}
+          ref={dateRef}
           type="date"
           defaultValue={date}
-          onChange={e => onChange(buildStoryTime(e.target.value, time))}
+          onChange={e => onChange(buildStoryTime(e.target.value, timeRef.current?.value ?? time))}
           className="flex-1 border rounded-lg px-3 py-2 text-sm min-w-0"
         />
         <input
-          key={`time-${time}`}
+          ref={timeRef}
           type="time"
           defaultValue={time}
-          onChange={e => onChange(buildStoryTime(date, e.target.value))}
+          onChange={e => onChange(buildStoryTime(dateRef.current?.value ?? date, e.target.value))}
           className="w-28 border rounded-lg px-3 py-2 text-sm"
         />
       </div>
       <div className="flex gap-2">
-        <button type="button" onClick={() => onChange(nowStoryTime())} className="text-xs text-indigo-600 hover:text-indigo-800">現在日時をセット</button>
-        {value && <button type="button" onClick={() => onChange('')} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
+        <button type="button" onClick={setNow} className="text-xs text-indigo-600 hover:text-indigo-800">現在日時をセット</button>
+        {value && <button type="button" onClick={clear} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
       </div>
     </div>
   );
