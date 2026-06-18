@@ -348,7 +348,7 @@ export default function Scenes() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">開示メモ</label>
-                  <textarea value={editSceneForm.disclosure_notes} onChange={e => setEditSceneForm({...editSceneForm, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+                  <textarea value={editSceneForm.disclosure_notes} onChange={e => setEditSceneForm({...editSceneForm, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={6} />
                 </div>
                 <div className="flex justify-end gap-3 pt-1">
                   <button type="button" onClick={() => setEditingScene(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
@@ -469,7 +469,7 @@ export default function Scenes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">開示メモ</label>
-              <textarea value={form.disclosure_notes} onChange={e => setForm({...form, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+              <textarea value={form.disclosure_notes} onChange={e => setForm({...form, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={6} />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
