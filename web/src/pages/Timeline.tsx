@@ -110,6 +110,16 @@ export default function Timeline() {
                         ))}
                       </div>
                     )}
+                    {chars.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {chars.map(sc => (
+                          <span key={sc.character_id} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 pl-1 pr-2 py-0.5 rounded-full">
+                            <Avatar src={charAvatar(sc.character_id)} name={sc.name} />
+                            {sc.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
