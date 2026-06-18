@@ -445,10 +445,25 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {resolved_at?: string; notes?: string};
+        const body = await request.json() as {from_character_id?: string; to_character_id?: string; swapped_at?: string; resolved_at?: string | null; trigger_event?: string | null; notes?: string | null};
         await env.DB.prepare(
-          `UPDATE consciousness_swaps SET resolved_at=COALESCE(?,resolved_at), notes=COALESCE(?,notes) WHERE id=?`
-        ).bind(body.resolved_at ?? null, body.notes ?? null, id).run();
+          `UPDATE consciousness_swaps SET
+            from_character_id=COALESCE(?,from_character_id),
+            to_character_id=COALESCE(?,to_character_id),
+            swapped_at=COALESCE(?,swapped_at),
+            resolved_at=CASE WHEN ?=1 THEN ? ELSE resolved_at END,
+            trigger_event=CASE WHEN ?=1 THEN ? ELSE trigger_event END,
+            notes=CASE WHEN ?=1 THEN ? ELSE notes END
+           WHERE id=?`
+        ).bind(
+          body.from_character_id ?? null,
+          body.to_character_id ?? null,
+          body.swapped_at ?? null,
+          'resolved_at' in body ? 1 : 0, body.resolved_at ?? null,
+          'trigger_event' in body ? 1 : 0, body.trigger_event ?? null,
+          'notes' in body ? 1 : 0, body.notes ?? null,
+          id
+        ).run();
         return json({ ok: true });
       }
       if (method === 'DELETE' && id) {
