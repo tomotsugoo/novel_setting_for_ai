@@ -320,6 +320,14 @@ export default function Scenes() {
             </div>
           ) : (
           <div className="space-y-4">
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+              <span className="text-xs text-gray-400 shrink-0">シーンID</span>
+              <span className="text-xs font-mono text-gray-600 flex-1 truncate">{detailScene.id}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(detailScene.id)}
+                className="text-xs text-indigo-500 hover:text-indigo-700 shrink-0"
+              >コピー</button>
+            </div>
             {editingScene ? (
               <form onSubmit={handleEditScene} className="space-y-3 text-sm">
                 <div>
