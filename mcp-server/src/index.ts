@@ -642,17 +642,19 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ relationships: result.results });
       }
       if (method === 'POST') {
-        const body = await request.json() as {id:string;character_id_a:string;character_id_b:string;relation_type:string;is_public?:number;valid_from?:string;valid_to?:string;notes?:string};
+        const body = await request.json() as {id:string;character_id_a:string;character_id_b:string;relation_type:string;is_public?:number|boolean;valid_from?:string;valid_to?:string;notes?:string};
+        const isPublic = body.is_public ? 1 : 0;
         await env.DB.prepare("INSERT INTO relationships (id,character_id_a,character_id_b,relation_type,is_public,valid_from,valid_to,notes) VALUES (?,?,?,?,?,?,?,?)")
-          .bind(body.id,body.character_id_a,body.character_id_b,body.relation_type,body.is_public??0,body.valid_from??null,body.valid_to??null,body.notes??null).run();
+          .bind(body.id,body.character_id_a,body.character_id_b,body.relation_type,isPublic,body.valid_from??null,body.valid_to??null,body.notes??null).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {relation_type?:string;is_public?:number;valid_from?:string|null;valid_to?:string|null;notes?:string|null};
+        const body = await request.json() as {relation_type?:string;is_public?:number|boolean;valid_from?:string|null;valid_to?:string|null;notes?:string|null};
+        const isPublic = body.is_public != null ? (body.is_public ? 1 : 0) : null;
         await env.DB.prepare(
           "UPDATE relationships SET relation_type=COALESCE(?,relation_type), is_public=COALESCE(?,is_public), valid_from=COALESCE(?,valid_from), valid_to=CASE WHEN ?=1 THEN ? ELSE valid_to END, notes=CASE WHEN ?=1 THEN ? ELSE notes END WHERE id=?"
         ).bind(
-          body.relation_type??null, body.is_public??null, body.valid_from??null,
+          body.relation_type??null, isPublic, body.valid_from??null,
           'valid_to' in body?1:0, body.valid_to??null,
           'notes' in body?1:0, body.notes??null,
           id
@@ -739,7 +741,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
 
     return json({ error: 'Not found' }, 404);
   } catch (err) {
-    return json({ error: String(err) }, 500);
+    return json({ error: String(err), detail: err instanceof Error ? err.stack : undefined }, 500);
   }
 }
 
