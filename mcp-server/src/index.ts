@@ -711,6 +711,19 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           valid_to TEXT,
           notes TEXT
         )`,
+        `CREATE TABLE IF NOT EXISTS relationships_new (
+          id TEXT PRIMARY KEY,
+          character_id_a TEXT NOT NULL REFERENCES characters(id),
+          character_id_b TEXT NOT NULL REFERENCES characters(id),
+          relation_type TEXT NOT NULL,
+          is_public INTEGER NOT NULL DEFAULT 0,
+          valid_from TEXT,
+          valid_to TEXT,
+          notes TEXT
+        )`,
+        `INSERT OR IGNORE INTO relationships_new SELECT id,character_id_a,character_id_b,relation_type,is_public,valid_from,valid_to,notes FROM relationships`,
+        `DROP TABLE IF EXISTS relationships`,
+        `ALTER TABLE relationships_new RENAME TO relationships`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',
