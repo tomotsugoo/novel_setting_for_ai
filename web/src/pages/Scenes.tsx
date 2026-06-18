@@ -28,8 +28,9 @@ function nowStoryTime(): string {
   return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:00`;
 }
 
-function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function StoryTimeInput({ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
   const { date, time } = parseStoryTime(value);
+  const sceneOptions = scenes.filter(s => s.story_time && s.id !== excludeId);
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
@@ -46,10 +47,25 @@ function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: stri
           className="w-28 border rounded-lg px-3 py-2 text-sm"
         />
       </div>
-      <div className="flex gap-3">
-        <button type="button" onClick={() => onChange(nowStoryTime())} className="text-xs text-indigo-600 hover:text-indigo-800">今日をセット</button>
-        {value && <button type="button" onClick={() => onChange('')} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
-      </div>
+      <select
+        value=""
+        onChange={e => {
+          const v = e.target.value;
+          if (v === '__today__') onChange(nowStoryTime());
+          else if (v === '__clear__') onChange('');
+          else if (v) onChange(v);
+        }}
+        className="w-full border rounded-lg px-3 py-2 text-sm text-gray-600 bg-gray-50"
+      >
+        <option value="">▼ 既存の日時から選択…</option>
+        <option value="__today__">今日（現在日時）</option>
+        {sceneOptions.map(s => (
+          <option key={s.id} value={s.story_time!}>
+            {s.narrative_order != null ? `#${s.narrative_order} ` : ''}{s.title}（{s.story_time}）
+          </option>
+        ))}
+        {value && <option value="__clear__">クリア</option>}
+      </select>
     </div>
   );
 }
@@ -238,7 +254,7 @@ export default function Scenes() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">物語内時間</label>
-                  <StoryTimeInput value={editSceneForm.story_time} onChange={v => setEditSceneForm({...editSceneForm, story_time: v})} />
+                  <StoryTimeInput value={editSceneForm.story_time} onChange={v => setEditSceneForm({...editSceneForm, story_time: v})} scenes={scenes} excludeId={detailScene.id} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">物語上の順番</label>
@@ -358,7 +374,7 @@ export default function Scenes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">物語内時間</label>
-              <StoryTimeInput value={form.story_time} onChange={v => setForm({...form, story_time: v})} />
+              <StoryTimeInput value={form.story_time} onChange={v => setForm({...form, story_time: v})} scenes={scenes} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">物語上の順番</label>
