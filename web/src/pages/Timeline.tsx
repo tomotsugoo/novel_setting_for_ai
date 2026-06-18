@@ -83,29 +83,17 @@ export default function Timeline() {
                     </div>
                     {s.story_time && <p className="text-xs text-gray-400">⏱ {s.story_time}</p>}
                     {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
-                    {s.protagonist_identity_id && (
-                      <div className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 pl-1 pr-2 py-0.5 rounded-full mt-1">
-                        <Avatar src={charAvatar(s.protagonist_identity_id)} name={charName(s.protagonist_identity_id)} />
-                        🧠 {charName(s.protagonist_identity_id)}
-                      </div>
-                    )}
-                    {chars.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {chars.map(sc => (
-                          <span key={sc.character_id} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 pl-1 pr-2 py-0.5 rounded-full">
-                            <Avatar src={charAvatar(sc.character_id)} name={sc.name} />
-                            {sc.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 意識入れ替わりイベント（横並び） */}
-                    {(starts.length > 0 || ends.length > 0) && (
-                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                    {(s.protagonist_identity_id || starts.length > 0 || ends.length > 0) && (
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        {s.protagonist_identity_id && (
+                          <div className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 pl-1 pr-2 py-0.5 rounded-full">
+                            <Avatar src={charAvatar(s.protagonist_identity_id)} name={charName(s.protagonist_identity_id)} />
+                            🧠 {charName(s.protagonist_identity_id)}
+                          </div>
+                        )}
                         {starts.map(sw => (
-                          <div key={`start-${sw.id}`} className="inline-flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
-                            <span className="text-xs font-medium text-red-600 shrink-0">⇄ 入替</span>
+                          <div key={`start-${sw.id}`} className="inline-flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-0.5">
+                            <span className="text-xs font-medium text-red-600 shrink-0">⇄</span>
                             <Avatar src={charAvatar(sw.from_character_id)} name={sw.from_name ?? charName(sw.from_character_id)} />
                             <span className="text-xs text-gray-700">{sw.from_name ?? charName(sw.from_character_id)}</span>
                             <span className="text-xs text-gray-400">→</span>
@@ -114,8 +102,8 @@ export default function Timeline() {
                           </div>
                         ))}
                         {ends.map(sw => (
-                          <div key={`end-${sw.id}`} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                            <span className="text-xs font-medium text-blue-600 shrink-0">↩ 回復</span>
+                          <div key={`end-${sw.id}`} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-2 py-0.5">
+                            <span className="text-xs font-medium text-blue-600 shrink-0">↩</span>
                             <Avatar src={charAvatar(sw.from_character_id)} name={sw.from_name ?? charName(sw.from_character_id)} />
                             <span className="text-xs text-gray-700">{sw.from_name ?? charName(sw.from_character_id)}</span>
                           </div>
