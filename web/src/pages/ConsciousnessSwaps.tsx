@@ -3,15 +3,17 @@ import { api, ConsciousnessSwap, Character, Scene } from '../api';
 import Modal from '../components/Modal';
 import { genId } from '../utils';
 
+type SwapFormData = { from_character_id: string; to_character_id: string; swapped_at_scene: string; resolved_at_scene: string; trigger_event: string; notes: string };
+
 export default function ConsciousnessSwaps() {
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editSwap, setEditSwap] = useState<ConsciousnessSwap | null>(null);
-  const [editForm, setEditForm] = useState({ from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', trigger_event: '', notes: '' });
+  const [editForm, setEditForm] = useState<SwapFormData>({ from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', trigger_event: '', notes: '' });
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SwapFormData & { id: string }>({
     id: genId(), from_character_id: '', to_character_id: '',
     swapped_at_scene: '', resolved_at_scene: '',
     trigger_event: '', notes: '',
@@ -113,8 +115,8 @@ export default function ConsciousnessSwaps() {
   if (error) return <div className="text-red-500">Error: {error}</div>;
 
   const SwapForm = ({ f, setF, onSubmit, onClose, submitLabel }: {
-    f: typeof form | typeof editForm;
-    setF: (v: typeof f) => void;
+    f: SwapFormData;
+    setF: (v: SwapFormData) => void;
     onSubmit: (e: React.FormEvent) => void;
     onClose: () => void;
     submitLabel: string;
