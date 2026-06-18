@@ -56,7 +56,7 @@ function LocationInput({ value, onChange, scenes, excludeId }: { value: string; 
   );
 }
 
-{ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
+function StoryTimeInput({ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
   const { date, time } = parseStoryTime(value);
   const sceneOptions = scenes.filter(s => s.story_time && s.id !== excludeId);
   return (
