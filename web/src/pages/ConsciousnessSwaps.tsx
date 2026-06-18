@@ -61,7 +61,7 @@ function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes 
   );
 }
 
-
+export default function ConsciousnessSwaps() {
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
