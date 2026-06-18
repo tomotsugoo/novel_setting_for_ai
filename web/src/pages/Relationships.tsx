@@ -1,12 +1,33 @@
 import { useEffect, useState } from 'react';
-import { api, Character, Relationship } from '../api';
+import { api, Character, Relationship, Scene } from '../api';
 import { genId } from '../utils';
 
-const emptyForm = { character_id_a: '', character_id_b: '', relation_type: '', is_public: 0, valid_from: '', valid_to: '', notes: '' };
+const emptyForm = { character_id_a: '', character_id_b: '', relation_type: '', is_public: 0, valid_from_scene: '', valid_to_scene: '', notes: '' };
+
+function SceneSelect({ value, onChange, scenes, placeholder }: { value: string; onChange: (v: string) => void; scenes: Scene[]; placeholder: string }) {
+  const sorted = [...scenes].filter(s => s.story_time).sort((a, b) => (a.narrative_order ?? 9999) - (b.narrative_order ?? 9999));
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
+      <option value="">{placeholder}</option>
+      {sorted.map(s => (
+        <option key={s.id} value={s.story_time!}>
+          {s.narrative_order != null ? `#${s.narrative_order} ` : ''}{s.title}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function sceneTitle(storyTime: string | null, scenes: Scene[]) {
+  if (!storyTime) return null;
+  const s = scenes.find(sc => sc.story_time === storyTime);
+  return s ? `#${s.narrative_order ?? '-'} ${s.title}` : storyTime;
+}
 
 export default function Relationships() {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editId, setEditId] = useState<string | null>(null);
@@ -15,9 +36,10 @@ export default function Relationships() {
 
   const load = async () => {
     try {
-      const [r, c] = await Promise.all([api.relationships.list(), api.characters.list()]);
+      const [r, c, s] = await Promise.all([api.relationships.list(), api.characters.list(), api.scenes.list()]);
       setRelationships(r.relationships);
       setCharacters(c.characters);
+      setScenes(s.scenes);
     } catch (e) { setError(String(e)); }
   };
 
@@ -28,7 +50,16 @@ export default function Relationships() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.relationships.create({ id: genId(), character_id_a: form.character_id_a, character_id_b: form.character_id_b, relation_type: form.relation_type, is_public: form.is_public, valid_from: form.valid_from || undefined, valid_to: form.valid_to || undefined, notes: form.notes || undefined });
+      await api.relationships.create({
+        id: genId(),
+        character_id_a: form.character_id_a,
+        character_id_b: form.character_id_b,
+        relation_type: form.relation_type,
+        is_public: form.is_public,
+        valid_from: form.valid_from_scene || undefined,
+        valid_to: form.valid_to_scene || undefined,
+        notes: form.notes || undefined,
+      });
       setShowAdd(false);
       setForm(emptyForm);
       load();
@@ -39,7 +70,13 @@ export default function Relationships() {
     e.preventDefault();
     if (!editId) return;
     try {
-      await api.relationships.update(editId, { relation_type: editForm.relation_type, is_public: editForm.is_public, valid_from: editForm.valid_from || null, valid_to: editForm.valid_to || null, notes: editForm.notes || null });
+      await api.relationships.update(editId, {
+        relation_type: editForm.relation_type,
+        is_public: editForm.is_public,
+        valid_from: editForm.valid_from_scene || null,
+        valid_to: editForm.valid_to_scene || null,
+        notes: editForm.notes || null,
+      });
       setEditId(null);
       load();
     } catch (e) { setError(String(e)); }
@@ -55,7 +92,7 @@ export default function Relationships() {
 
   const openEdit = (r: Relationship) => {
     setEditId(r.id);
-    setEditForm({ character_id_a: r.character_id_a, character_id_b: r.character_id_b, relation_type: r.relation_type, is_public: r.is_public, valid_from: r.valid_from ?? '', valid_to: r.valid_to ?? '', notes: r.notes ?? '' });
+    setEditForm({ character_id_a: r.character_id_a, character_id_b: r.character_id_b, relation_type: r.relation_type, is_public: r.is_public, valid_from_scene: r.valid_from ?? '', valid_to_scene: r.valid_to ?? '', notes: r.notes ?? '' });
   };
 
   if (error) return <div className="text-red-500">Error: {error}</div>;
@@ -95,17 +132,17 @@ export default function Relationships() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">有効開始</label>
-                <input value={form.valid_from} onChange={e => setForm({...form, valid_from: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" placeholder="例: 0001-01-01T00:00:00" />
+                <label className="block text-xs font-medium text-gray-600 mb-1">有効開始シーン</label>
+                <SceneSelect value={form.valid_from_scene} onChange={v => setForm({...form, valid_from_scene: v})} scenes={scenes} placeholder="（最初から）" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">有効終了</label>
-                <input value={form.valid_to} onChange={e => setForm({...form, valid_to: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" placeholder="空=現在も有効" />
+                <label className="block text-xs font-medium text-gray-600 mb-1">有効終了シーン</label>
+                <SceneSelect value={form.valid_to_scene} onChange={v => setForm({...form, valid_to_scene: v})} scenes={scenes} placeholder="（現在も有効）" />
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input type="checkbox" id="is_public" checked={form.is_public === 1} onChange={e => setForm({...form, is_public: e.target.checked ? 1 : 0})} className="rounded" />
-              <label htmlFor="is_public" className="text-xs text-gray-600">公開情報（読者に開示済み）</label>
+              <input type="checkbox" id="is_public_add" checked={form.is_public === 1} onChange={e => setForm({...form, is_public: e.target.checked ? 1 : 0})} className="rounded" />
+              <label htmlFor="is_public_add" className="text-xs text-gray-600">公開情報（読者に開示済み）</label>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
@@ -133,12 +170,12 @@ export default function Relationships() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">有効開始</label>
-                      <input value={editForm.valid_from} onChange={e => setEditForm({...editForm, valid_from: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">有効開始シーン</label>
+                      <SceneSelect value={editForm.valid_from_scene} onChange={v => setEditForm({...editForm, valid_from_scene: v})} scenes={scenes} placeholder="（最初から）" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">有効終了</label>
-                      <input value={editForm.valid_to} onChange={e => setEditForm({...editForm, valid_to: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">有効終了シーン</label>
+                      <SceneSelect value={editForm.valid_to_scene} onChange={v => setEditForm({...editForm, valid_to_scene: v})} scenes={scenes} placeholder="（現在も有効）" />
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -168,7 +205,9 @@ export default function Relationships() {
                       )}
                     </div>
                     {(r.valid_from || r.valid_to) && (
-                      <p className="text-xs text-gray-400 font-mono">{r.valid_from ?? '?'} 〜 {r.valid_to ?? '現在'}</p>
+                      <p className="text-xs text-gray-400">
+                        {r.valid_from ? sceneTitle(r.valid_from, scenes) : '最初から'} 〜 {r.valid_to ? sceneTitle(r.valid_to, scenes) : '現在も有効'}
+                      </p>
                     )}
                     {r.notes && <p className="text-xs text-gray-500 mt-1">{r.notes}</p>}
                   </div>
