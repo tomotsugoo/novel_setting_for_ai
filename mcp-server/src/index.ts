@@ -71,6 +71,14 @@ const TOOLS = [
       required: ["scene_id"],
     },
   },
+  {
+    name: "check_all_consistency",
+    description: "全データを横断して整合性・矛盾をチェックする。意識入れ替わりの時系列矛盾、シーンのprotagonist_identity_idとswapの整合性、孤立キャラ・孤立シーン、narrative_orderの重複・欠番を検出する。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
@@ -245,6 +253,120 @@ async function getDisclosureLevel(db: D1Database, args: { scene_id: string }): P
   return { scene_id: args.scene_id, title: scene.title, story_time: scene.story_time, disclosure_notes: scene.disclosure_notes, relationships };
 }
 
+async function checkAllConsistency(db: D1Database): Promise<unknown> {
+  const issues: { severity: "error" | "warning" | "info"; category: string; message: string }[] = [];
+
+  const characters = (await db.prepare("SELECT id, name FROM characters").all()).results as Array<{ id: string; name: string }>;
+  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null }>;
+  const swaps = (await db.prepare("SELECT * FROM consciousness_swaps ORDER BY swapped_at").all()).results as Array<{ id: string; from_character_id: string; to_character_id: string; swapped_at: string; resolved_at: string | null; trigger_event: string | null; notes: string | null }>;
+  const sceneChars = (await db.prepare("SELECT scene_id, character_id FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string }>;
+
+  const charIds = new Set(characters.map(c => c.id));
+  const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
+
+  // 1. 意識入れ替わりの時系列矛盾
+  for (const sw of swaps) {
+    if (sw.resolved_at && sw.resolved_at <= sw.swapped_at) {
+      issues.push({ severity: "error", category: "意識入れ替わり", message: `「${charName(sw.from_character_id)}→${charName(sw.to_character_id)}」の解決日時(${sw.resolved_at})が入れ替わり日時(${sw.swapped_at})以前です` });
+    }
+  }
+
+  // 2. 同一キャラが同時期に複数の入れ替わりに関与
+  for (let i = 0; i < swaps.length; i++) {
+    for (let j = i + 1; j < swaps.length; j++) {
+      const a = swaps[i], b = swaps[j];
+      const aEnd = a.resolved_at ?? "9999-99-99";
+      const bEnd = b.resolved_at ?? "9999-99-99";
+      const overlap = a.swapped_at < bEnd && b.swapped_at < aEnd;
+      if (!overlap) continue;
+      const aChars = new Set([a.from_character_id, a.to_character_id]);
+      const bChars = new Set([b.from_character_id, b.to_character_id]);
+      for (const cid of aChars) {
+        if (bChars.has(cid)) {
+          issues.push({ severity: "error", category: "意識入れ替わり", message: `「${charName(cid)}」が同時期に複数の入れ替わりに関与しています（ID: ${a.id} と ${b.id}）` });
+        }
+      }
+    }
+  }
+
+  // 3. 入れ替わりに存在しないキャラIDが使われている
+  for (const sw of swaps) {
+    if (!charIds.has(sw.from_character_id)) {
+      issues.push({ severity: "error", category: "参照整合性", message: `入れ替わり(${sw.id})のfrom_character_id「${sw.from_character_id}」はキャラとして登録されていません` });
+    }
+    if (!charIds.has(sw.to_character_id)) {
+      issues.push({ severity: "error", category: "参照整合性", message: `入れ替わり(${sw.id})のto_character_id「${sw.to_character_id}」はキャラとして登録されていません` });
+    }
+  }
+
+  // 4. シーンのprotagonist_identity_idとその時刻のswapが一致しているか
+  for (const scene of scenes) {
+    if (!scene.protagonist_identity_id || !scene.story_time) continue;
+    const t = scene.story_time;
+    const activeSwap = swaps.find(sw =>
+      sw.swapped_at <= t && (sw.resolved_at == null || sw.resolved_at > t) &&
+      (sw.from_character_id === scene.protagonist_identity_id || sw.to_character_id === scene.protagonist_identity_id)
+    );
+    if (!activeSwap && !charIds.has(scene.protagonist_identity_id)) {
+      issues.push({ severity: "error", category: "シーン自認", message: `シーン「${scene.title}」のprotagonist_identity_id「${scene.protagonist_identity_id}」はキャラ未登録です` });
+    }
+  }
+
+  // 5. narrative_orderの重複
+  const orders = scenes.map(s => s.narrative_order).filter(o => o != null) as number[];
+  const orderCount: Record<number, number> = {};
+  for (const o of orders) orderCount[o] = (orderCount[o] ?? 0) + 1;
+  for (const [o, count] of Object.entries(orderCount)) {
+    if (count > 1) {
+      const dups = scenes.filter(s => s.narrative_order === Number(o)).map(s => `「${s.title}」`).join(", ");
+      issues.push({ severity: "error", category: "シーン順序", message: `第${o}話が重複しています: ${dups}` });
+    }
+  }
+
+  // 6. narrative_orderの欠番
+  if (orders.length > 0) {
+    const max = Math.max(...orders);
+    for (let i = 1; i <= max; i++) {
+      if (!orderCount[i]) {
+        issues.push({ severity: "warning", category: "シーン順序", message: `第${i}話が欠番です` });
+      }
+    }
+  }
+
+  // 7. どのシーンにも登場しないキャラ
+  const appearedChars = new Set(sceneChars.map(sc => sc.character_id));
+  for (const c of characters) {
+    if (!appearedChars.has(c.id)) {
+      issues.push({ severity: "info", category: "孤立データ", message: `キャラ「${c.name}」はどのシーンにも登場していません` });
+    }
+  }
+
+  // 8. story_timeのないシーンの数
+  const noTimeScenes = scenes.filter(s => !s.story_time);
+  if (noTimeScenes.length > 0) {
+    issues.push({ severity: "info", category: "シーン情報", message: `物語時間が未設定のシーンが${noTimeScenes.length}件あります: ${noTimeScenes.map(s => `「${s.title}」`).join(", ")}` });
+  }
+
+  const errors = issues.filter(i => i.severity === "error");
+  const warnings = issues.filter(i => i.severity === "warning");
+  const infos = issues.filter(i => i.severity === "info");
+
+  return {
+    summary: {
+      errors: errors.length,
+      warnings: warnings.length,
+      info: infos.length,
+      total_issues: issues.length,
+    },
+    issues,
+    stats: {
+      characters: characters.length,
+      scenes: scenes.length,
+      swaps: swaps.length,
+    },
+  };
+}
+
 async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse> {
   const { id, method, params = {} } = req;
   try {
@@ -284,6 +406,9 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             break;
           case "get_disclosure_level":
             toolResult = await getDisclosureLevel(env.DB, toolArgs as { scene_id: string });
+            break;
+          case "check_all_consistency":
+            toolResult = await checkAllConsistency(env.DB);
             break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
