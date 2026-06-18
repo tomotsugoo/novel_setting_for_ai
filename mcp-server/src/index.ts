@@ -484,14 +484,16 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null};
+        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null};
         const hasIdentity = 'protagonist_identity_id' in (body as object);
+        const hasBody = 'body' in (body as object);
         await env.DB.prepare(
-          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END WHERE id=?"
+          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END WHERE id=?"
         ).bind(
           body.title ?? null, body.story_time ?? null, body.narrative_order ?? null,
           body.location ?? null, body.disclosure_notes ?? null, body.is_written ?? null,
-          hasIdentity ? 1 : 0, body.protagonist_identity_id ?? null, id
+          hasIdentity ? 1 : 0, body.protagonist_identity_id ?? null,
+          hasBody ? 1 : 0, body.body ?? null, id
         ).run();
         return json({ ok: true });
       }
@@ -621,6 +623,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         `ALTER TABLE consciousness_swaps_new RENAME TO consciousness_swaps`,
         `ALTER TABLE scenes ADD COLUMN protagonist_identity_id TEXT REFERENCES characters(id)`,
         `ALTER TABLE characters ADD COLUMN avatar TEXT`,
+        `ALTER TABLE scenes ADD COLUMN body TEXT`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

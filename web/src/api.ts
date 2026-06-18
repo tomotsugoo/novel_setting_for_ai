@@ -51,7 +51,8 @@ export interface Scene {
   id: string; title: string; story_time: string | null;
   narrative_order: number | null; location: string | null;
   timeline_branch_id: string | null; disclosure_notes: string | null;
-  is_written: number; protagonist_identity_id: string | null; created_at: string;
+  is_written: number; protagonist_identity_id: string | null;
+  body: string | null; created_at: string;
 }
 export interface WorldRule {
   id: string; category: string; rule: string; applies_from: string | null;

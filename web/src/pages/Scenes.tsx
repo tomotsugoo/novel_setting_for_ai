@@ -108,6 +108,9 @@ export default function Scenes() {
   const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [editingScene, setEditingScene] = useState(false);
   const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+  const [sceneTab, setSceneTab] = useState<'info' | 'body'>('info');
+  const [bodyText, setBodyText] = useState('');
+  const [bodySaving, setBodySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.scenes.list().then(r => setScenes(r.scenes)).catch((e: Error) => setError(e.message));
@@ -120,6 +123,8 @@ export default function Scenes() {
   const openDetail = async (scene: Scene) => {
     setDetailScene(scene);
     setEditingScene(false);
+    setSceneTab('info');
+    setBodyText(scene.body ?? '');
     setEditSceneForm({
       title: scene.title,
       story_time: scene.story_time ?? '',
@@ -129,6 +134,17 @@ export default function Scenes() {
     });
     const r = await api.sceneCharacters.list(scene.id);
     setSceneChars(r.scene_characters);
+  };
+
+  const handleSaveBody = async () => {
+    if (!detailScene) return;
+    setBodySaving(true);
+    try {
+      await api.scenes.update(detailScene.id, { body: bodyText || null });
+      setDetailScene({ ...detailScene, body: bodyText || null });
+      setScenes(ss => ss.map(s => s.id === detailScene.id ? { ...s, body: bodyText || null } : s));
+    } catch (e) { setError(String(e)); }
+    setBodySaving(false);
   };
 
   const handleEditScene = async (e: React.FormEvent) => {
@@ -273,6 +289,36 @@ export default function Scenes() {
       {/* シーン詳細モーダル */}
       {detailScene && (
         <Modal title={detailScene.title} onClose={() => setDetailScene(null)}>
+          {/* タブ */}
+          <div className="flex border-b mb-4">
+            <button
+              onClick={() => setSceneTab('info')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${sceneTab === 'info' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >設定</button>
+            <button
+              onClick={() => setSceneTab('body')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${sceneTab === 'body' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >本文</button>
+          </div>
+          {sceneTab === 'body' ? (
+            <div className="space-y-3">
+              <textarea
+                value={bodyText}
+                onChange={e => setBodyText(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm font-mono leading-relaxed resize-none"
+                rows={20}
+                placeholder="本文を入力..."
+              />
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-400">{bodyText.length} 文字</span>
+                <button
+                  onClick={handleSaveBody}
+                  disabled={bodySaving}
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >{bodySaving ? '保存中…' : '保存'}</button>
+              </div>
+            </div>
+          ) : (
           <div className="space-y-4">
             {editingScene ? (
               <form onSubmit={handleEditScene} className="space-y-3 text-sm">
@@ -389,6 +435,7 @@ export default function Scenes() {
               </form>
             </div>
           </div>
+          )}
         </Modal>
       )}
 
