@@ -599,6 +599,72 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    if (resource === 'character_states') {
+      const charId = parts[2];
+      if (method === 'GET' && charId) {
+        const result = await env.DB.prepare("SELECT * FROM character_states WHERE character_id=? ORDER BY valid_from DESC").bind(charId).all();
+        return json({ states: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {id:string;character_id:string;valid_from:string;valid_to?:string;appearance?:string;status?:string;notes?:string};
+        await env.DB.prepare("INSERT INTO character_states (id,character_id,valid_from,valid_to,appearance,status,notes) VALUES (?,?,?,?,?,?,?)")
+          .bind(body.id,body.character_id,body.valid_from,body.valid_to??null,body.appearance??null,body.status??null,body.notes??null).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && charId) {
+        const body = await request.json() as {valid_from?:string;valid_to?:string|null;appearance?:string|null;status?:string|null;notes?:string|null};
+        await env.DB.prepare(
+          "UPDATE character_states SET valid_from=COALESCE(?,valid_from), valid_to=CASE WHEN ?=1 THEN ? ELSE valid_to END, appearance=CASE WHEN ?=1 THEN ? ELSE appearance END, status=CASE WHEN ?=1 THEN ? ELSE status END, notes=CASE WHEN ?=1 THEN ? ELSE notes END WHERE id=?"
+        ).bind(
+          body.valid_from??null,
+          'valid_to' in body?1:0, body.valid_to??null,
+          'appearance' in body?1:0, body.appearance??null,
+          'status' in body?1:0, body.status??null,
+          'notes' in body?1:0, body.notes??null,
+          charId
+        ).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE' && charId) {
+        await env.DB.prepare("DELETE FROM character_states WHERE id=?").bind(charId).run();
+        return json({ ok: true });
+      }
+    }
+
+    if (resource === 'relationships') {
+      if (method === 'GET') {
+        const result = await env.DB.prepare(
+          `SELECT r.*, ca.name as name_a, cb.name as name_b FROM relationships r
+           JOIN characters ca ON r.character_id_a=ca.id
+           JOIN characters cb ON r.character_id_b=cb.id
+           ORDER BY ca.name, cb.name`
+        ).all();
+        return json({ relationships: result.results });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as {id:string;character_id_a:string;character_id_b:string;relation_type:string;is_public?:number;valid_from?:string;valid_to?:string;notes?:string};
+        await env.DB.prepare("INSERT INTO relationships (id,character_id_a,character_id_b,relation_type,is_public,valid_from,valid_to,notes) VALUES (?,?,?,?,?,?,?,?)")
+          .bind(body.id,body.character_id_a,body.character_id_b,body.relation_type,body.is_public??0,body.valid_from??null,body.valid_to??null,body.notes??null).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as {relation_type?:string;is_public?:number;valid_from?:string|null;valid_to?:string|null;notes?:string|null};
+        await env.DB.prepare(
+          "UPDATE relationships SET relation_type=COALESCE(?,relation_type), is_public=COALESCE(?,is_public), valid_from=COALESCE(?,valid_from), valid_to=CASE WHEN ?=1 THEN ? ELSE valid_to END, notes=CASE WHEN ?=1 THEN ? ELSE notes END WHERE id=?"
+        ).bind(
+          body.relation_type??null, body.is_public??null, body.valid_from??null,
+          'valid_to' in body?1:0, body.valid_to??null,
+          'notes' in body?1:0, body.notes??null,
+          id
+        ).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE' && id) {
+        await env.DB.prepare("DELETE FROM relationships WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
     if (resource === 'migrate' && method === 'POST') {
       const migrations: string[] = [
         `CREATE TABLE IF NOT EXISTS scene_characters (
@@ -624,6 +690,25 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         `ALTER TABLE scenes ADD COLUMN protagonist_identity_id TEXT REFERENCES characters(id)`,
         `ALTER TABLE characters ADD COLUMN avatar TEXT`,
         `ALTER TABLE scenes ADD COLUMN body TEXT`,
+        `CREATE TABLE IF NOT EXISTS character_states (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL REFERENCES characters(id),
+          valid_from TEXT NOT NULL,
+          valid_to TEXT,
+          appearance TEXT,
+          status TEXT,
+          notes TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS relationships (
+          id TEXT PRIMARY KEY,
+          character_id_a TEXT NOT NULL REFERENCES characters(id),
+          character_id_b TEXT NOT NULL REFERENCES characters(id),
+          relation_type TEXT NOT NULL,
+          is_public INTEGER NOT NULL DEFAULT 0,
+          valid_from TEXT,
+          valid_to TEXT,
+          notes TEXT
+        )`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

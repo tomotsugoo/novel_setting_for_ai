@@ -40,6 +40,18 @@ export const api = {
     update: (id: string, data: Partial<ConsciousnessSwap>) => apiFetch(`/api/consciousness_swaps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/consciousness_swaps/${id}`, { method: 'DELETE' }),
   },
+  characterStates: {
+    list: (characterId: string) => apiFetch<{states: CharacterState[]}>(`/api/character_states/${characterId}`),
+    create: (data: Partial<CharacterState>) => apiFetch('/api/character_states', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<CharacterState>) => apiFetch(`/api/character_states/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/character_states/${id}`, { method: 'DELETE' }),
+  },
+  relationships: {
+    list: () => apiFetch<{relationships: Relationship[]}>('/api/relationships'),
+    create: (data: Partial<Relationship>) => apiFetch('/api/relationships', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Relationship>) => apiFetch(`/api/relationships/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/relationships/${id}`, { method: 'DELETE' }),
+  },
 };
 
 export interface Character {
@@ -67,6 +79,16 @@ export interface ConsciousnessSwap {
   to_character_id: string; to_name?: string;
   swapped_at: string; resolved_at: string | null;
   trigger_event: string | null; notes: string | null;
+}
+export interface CharacterState {
+  id: string; character_id: string; valid_from: string; valid_to: string | null;
+  appearance: string | null; status: string | null; notes: string | null;
+}
+export interface Relationship {
+  id: string; character_id_a: string; character_id_b: string;
+  relation_type: string; is_public: number;
+  valid_from: string | null; valid_to: string | null; notes: string | null;
+  name_a?: string; name_b?: string;
 }
 export interface DashboardData {
   characters: number; scenes: number; written: number;
