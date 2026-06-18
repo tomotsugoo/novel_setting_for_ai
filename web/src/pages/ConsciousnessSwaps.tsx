@@ -5,7 +5,63 @@ import { genId } from '../utils';
 
 type SwapFormData = { from_character_id: string; to_character_id: string; swapped_at_scene: string; resolved_at_scene: string; trigger_event: string; notes: string };
 
-export default function ConsciousnessSwaps() {
+function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes }: {
+  f: SwapFormData;
+  setF: (v: SwapFormData) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+  submitLabel: string;
+  characters: Character[];
+  scenes: Scene[];
+}) {
+  const sceneLabel = (s: Scene) => `#${s.narrative_order ?? '-'} ${s.title}`;
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わった意識の持ち主（FROM）</label>
+        <select required value={f.from_character_id} onChange={e => setF({...f, from_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">選択</option>
+          {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">乗り移った体の持ち主（TO）</label>
+        <select required value={f.to_character_id} onChange={e => setF({...f, to_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">選択</option>
+          {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わったシーン</label>
+        <select required value={f.swapped_at_scene} onChange={e => setF({...f, swapped_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">シーンを選択</option>
+          {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">自我回復シーン（任意）</label>
+        <select value={f.resolved_at_scene} onChange={e => setF({...f, resolved_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">（未回復）</option>
+          {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">原因となった出来事</label>
+        <input value={f.trigger_event} onChange={e => setF({...f, trigger_event: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例: ファナによるエルシィ暗殺" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">メモ</label>
+        <textarea value={f.notes} onChange={e => setF({...f, notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600">キャンセル</button>
+        <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">{submitLabel}</button>
+      </div>
+    </form>
+  );
+}
+
+
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -114,57 +170,6 @@ export default function ConsciousnessSwaps() {
 
   if (error) return <div className="text-red-500">Error: {error}</div>;
 
-  const SwapForm = ({ f, setF, onSubmit, onClose, submitLabel }: {
-    f: SwapFormData;
-    setF: (v: SwapFormData) => void;
-    onSubmit: (e: React.FormEvent) => void;
-    onClose: () => void;
-    submitLabel: string;
-  }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わった意識の持ち主（FROM）</label>
-        <select required value={f.from_character_id} onChange={e => setF({...f, from_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="">選択</option>
-          {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">乗り移った体の持ち主（TO）</label>
-        <select required value={f.to_character_id} onChange={e => setF({...f, to_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="">選択</option>
-          {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わったシーン</label>
-        <select required value={f.swapped_at_scene} onChange={e => setF({...f, swapped_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="">シーンを選択</option>
-          {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">自我回復シーン（任意）</label>
-        <select value={f.resolved_at_scene} onChange={e => setF({...f, resolved_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="">（未回復）</option>
-          {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">原因となった出来事</label>
-        <input value={f.trigger_event} onChange={e => setF({...f, trigger_event: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="例: ファナによるエルシィ暗殺" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">メモ</label>
-        <textarea value={f.notes} onChange={e => setF({...f, notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
-      </div>
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600">キャンセル</button>
-        <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">{submitLabel}</button>
-      </div>
-    </form>
-  );
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -225,7 +230,7 @@ export default function ConsciousnessSwaps() {
       {/* 編集モーダル */}
       {editSwap && (
         <Modal title="入れ替わりを編集" onClose={() => setEditSwap(null)}>
-          <SwapForm f={editForm} setF={setEditForm} onSubmit={handleEditSubmit} onClose={() => setEditSwap(null)} submitLabel="保存" />
+          <SwapForm f={editForm} setF={setEditForm} onSubmit={handleEditSubmit} onClose={() => setEditSwap(null)} submitLabel="保存" characters={characters} scenes={scenes} />
         </Modal>
       )}
 
@@ -254,7 +259,7 @@ export default function ConsciousnessSwaps() {
       {/* 入れ替わり追加モーダル */}
       {showAdd && (
         <Modal title="意識の入れ替わりを記録" onClose={() => setShowAdd(false)}>
-          <SwapForm f={form} setF={v => setForm({ ...v, id: form.id })} onSubmit={handleSubmit} onClose={() => setShowAdd(false)} submitLabel="記録する" />
+          <SwapForm f={form} setF={v => setForm({ ...v, id: form.id })} onSubmit={handleSubmit} onClose={() => setShowAdd(false)} submitLabel="記録する" characters={characters} scenes={scenes} />
         </Modal>
       )}
     </div>
