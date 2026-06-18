@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Scene, Character, SceneCharacter } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
@@ -8,67 +8,58 @@ const roleInSceneLabels: Record<string, string> = {
   main: 'メイン', sub: 'サブ', mentioned: '言及のみ',
 };
 
-// DB形式 "0001-01-01T12:00:00" をパース
-function parseStoryTime(s: string) {
+type ST = { y: string; mo: string; d: string; h: string; mi: string };
+
+function parseST(s: string): ST {
   const m = s.match(/^(\d+)-(\d+)-(\d+)T(\d+):(\d+)/);
-  if (!m) return { date: '', time: '' };
-  const date = `${m[1].padStart(4, '0')}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-  const time = `${m[4].padStart(2, '0')}:${m[5].padStart(2, '0')}`;
-  return { date, time };
+  if (m) return { y: String(Number(m[1])), mo: String(Number(m[2])), d: String(Number(m[3])), h: String(Number(m[4])), mi: String(Number(m[5])) };
+  return { y: '', mo: '', d: '', h: '', mi: '' };
 }
 
-function buildStoryTime(date: string, time: string): string {
-  if (!date) return '';
-  return `${date}T${time || '00:00'}:00`;
+function buildST(t: ST): string {
+  if (!t.y && !t.mo && !t.d) return '';
+  return `${(t.y||'1').padStart(4,'0')}-${(t.mo||'1').padStart(2,'0')}-${(t.d||'1').padStart(2,'0')}T${(t.h||'0').padStart(2,'0')}:${(t.mi||'0').padStart(2,'0')}:00`;
 }
 
-function nowStoryTime(): string {
+function nowST(): ST {
   const n = new Date();
-  const pad = (x: number) => String(x).padStart(2, '0');
-  return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:00`;
+  return { y: String(n.getFullYear()), mo: String(n.getMonth()+1), d: String(n.getDate()), h: String(n.getHours()), mi: String(n.getMinutes()) };
 }
 
 function StoryTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { date, time } = parseStoryTime(value);
-  const dateRef = useRef<HTMLInputElement>(null);
-  const timeRef = useRef<HTMLInputElement>(null);
+  const [t, setT] = useState<ST>(() => parseST(value));
 
-  const setNow = () => {
-    const now = nowStoryTime();
-    const { date: d, time: t } = parseStoryTime(now);
-    if (dateRef.current) dateRef.current.value = d;
-    if (timeRef.current) timeRef.current.value = t;
-    onChange(now);
-  };
+  useEffect(() => { setT(parseST(value)); }, [value]);
 
-  const clear = () => {
-    if (dateRef.current) dateRef.current.value = '';
-    if (timeRef.current) timeRef.current.value = '';
-    onChange('');
-  };
+  const update = (next: ST) => { setT(next); onChange(buildST(next)); };
+
+  const n = (field: keyof ST, label: string, max: number, w = 'w-14') => (
+    <label className="flex items-center gap-1">
+      <input
+        type="number" min={0} max={max}
+        value={t[field]}
+        onChange={e => update({ ...t, [field]: e.target.value })}
+        placeholder="-"
+        className={`${w} border rounded-lg px-2 py-2 text-sm text-center`}
+      />
+      <span className="text-gray-500 text-sm shrink-0">{label}</span>
+    </label>
+  );
 
   return (
-    <div className="space-y-1">
-      <div className="flex gap-2">
-        <input
-          ref={dateRef}
-          type="date"
-          defaultValue={date}
-          onChange={e => onChange(buildStoryTime(e.target.value, timeRef.current?.value ?? time))}
-          className="flex-1 border rounded-lg px-3 py-2 text-sm min-w-0"
-        />
-        <input
-          ref={timeRef}
-          type="time"
-          defaultValue={time}
-          onChange={e => onChange(buildStoryTime(dateRef.current?.value ?? date, e.target.value))}
-          className="w-28 border rounded-lg px-3 py-2 text-sm"
-        />
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        {n('y','年',9999,'w-16')}
+        {n('mo','月',12)}
+        {n('d','日',31)}
+        {n('h','時',23)}
+        {n('mi','分',59)}
       </div>
-      <div className="flex gap-2">
-        <button type="button" onClick={setNow} className="text-xs text-indigo-600 hover:text-indigo-800">現在日時をセット</button>
-        {value && <button type="button" onClick={clear} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
+      <div className="flex gap-3">
+        <button type="button" onClick={() => update(nowST())} className="text-xs text-indigo-600 hover:text-indigo-800">今日をセット</button>
+        {value && <button type="button" onClick={() => update({ y:'',mo:'',d:'',h:'',mi:'' })} className="text-xs text-gray-400 hover:text-gray-600">クリア</button>}
       </div>
+      {value && <p className="text-xs text-gray-400">{value}</p>}
     </div>
   );
 }
