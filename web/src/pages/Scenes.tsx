@@ -28,7 +28,35 @@ function nowStoryTime(): string {
   return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:00`;
 }
 
-function StoryTimeInput({ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
+function LocationInput({ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
+  const locations = Array.from(new Set(
+    scenes.filter(s => s.location && s.id !== excludeId).map(s => s.location!)
+  ));
+  return (
+    <div className="space-y-2">
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 text-sm"
+        placeholder="場所を入力"
+      />
+      {locations.length > 0 && (
+        <select
+          value=""
+          onChange={e => { if (e.target.value) onChange(e.target.value); }}
+          className="w-full border rounded-lg px-3 py-2 text-sm text-gray-600 bg-gray-50"
+        >
+          <option value="">▼ 過去のシーンから選択…</option>
+          {locations.map(loc => (
+            <option key={loc} value={loc}>{loc}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+{ value, onChange, scenes, excludeId }: { value: string; onChange: (v: string) => void; scenes: Scene[]; excludeId?: string }) {
   const { date, time } = parseStoryTime(value);
   const sceneOptions = scenes.filter(s => s.story_time && s.id !== excludeId);
   return (
@@ -262,7 +290,7 @@ export default function Scenes() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">場所</label>
-                  <input value={editSceneForm.location} onChange={e => setEditSceneForm({...editSceneForm, location: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  <LocationInput value={editSceneForm.location} onChange={v => setEditSceneForm({...editSceneForm, location: v})} scenes={scenes} excludeId={detailScene.id} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">開示メモ</label>
@@ -382,7 +410,7 @@ export default function Scenes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">場所</label>
-              <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+              <LocationInput value={form.location} onChange={v => setForm({...form, location: v})} scenes={scenes} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">開示メモ</label>
