@@ -9,6 +9,7 @@ import Rules from "./pages/Rules";
 import Migrate from "./pages/Migrate";
 import ConsciousnessSwaps from "./pages/ConsciousnessSwaps";
 import Relationships from "./pages/Relationships";
+import RelationGraph from "./pages/RelationGraph";
 import Login from "./pages/Login";
 import { isAuthenticated } from "./auth";
 
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/rules" element={<Rules />} />
               <Route path="/consciousness" element={<ConsciousnessSwaps />} />
               <Route path="/relationships" element={<Relationships />} />
+              <Route path="/relation-graph" element={<RelationGraph />} />
               <Route path="/migrate" element={<Migrate />} />
             </Routes>
           </main>
