@@ -105,7 +105,7 @@ export default function RelationGraph() {
           <defs>
             {nodes.map(n => (
               <clipPath key={`clip-${n.id}`} id={`clip-${n.id}`}>
-                <circle cx={n.x} cy={n.y} r={NODE_R - 2} />
+                <circle cx={0} cy={0} r={NODE_R - 2} />
               </clipPath>
             ))}
           </defs>
@@ -168,7 +168,7 @@ export default function RelationGraph() {
                 {img ? (
                   <image
                     href={img}
-                    x={-NODE_R + 2} y={-NODE_R + 2}
+                    x={-(NODE_R - 2)} y={-(NODE_R - 2)}
                     width={(NODE_R - 2) * 2} height={(NODE_R - 2) * 2}
                     clipPath={`url(#clip-${n.id})`}
                     preserveAspectRatio="xMidYMid slice"
