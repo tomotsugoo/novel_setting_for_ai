@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Character, CharacterState } from '../api';
+import { api, Character, CharacterState, Scene } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
 import { genId, resizeImageToBase64 } from '../utils';
@@ -14,23 +14,44 @@ function Avatar({ src, name, size = 'md' }: { src: string | null; name: string; 
   );
 }
 
-function StateForm({ f, setF, onSubmit, onClose, label }: {
+function SceneSelect({ value, onChange, scenes, placeholder }: { value: string; onChange: (v: string) => void; scenes: Scene[]; placeholder: string }) {
+  const sorted = [...scenes].filter(s => s.story_time).sort((a, b) => (a.narrative_order ?? 9999) - (b.narrative_order ?? 9999));
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm">
+      <option value="">{placeholder}</option>
+      {sorted.map(s => (
+        <option key={s.id} value={s.story_time!}>
+          {s.narrative_order != null ? `#${s.narrative_order} ` : ''}{s.title}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function sceneTitle(storyTime: string | null, scenes: Scene[]) {
+  if (!storyTime) return null;
+  const s = scenes.find(sc => sc.story_time === storyTime);
+  return s ? `#${s.narrative_order ?? '-'} ${s.title}` : storyTime;
+}
+
+function StateForm({ f, setF, onSubmit, onClose, label, scenes }: {
   f: { valid_from: string; valid_to: string; appearance: string; status: string; notes: string };
   setF: (v: typeof f) => void;
   onSubmit: (e: React.FormEvent) => void;
   onClose: () => void;
   label: string;
+  scenes: Scene[];
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-3 text-sm border-t pt-3 mt-3">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">有効開始 (必須)</label>
-          <input required value={f.valid_from} onChange={e => setF({...f, valid_from: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" placeholder="例: 0001-01-01T00:00:00" />
+          <label className="block text-xs font-medium text-gray-600 mb-1">この状態になるシーン (必須)</label>
+          <SceneSelect value={f.valid_from} onChange={v => setF({...f, valid_from: v})} scenes={scenes} placeholder="シーンを選択" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">有効終了</label>
-          <input value={f.valid_to} onChange={e => setF({...f, valid_to: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" placeholder="空=現在も有効" />
+          <label className="block text-xs font-medium text-gray-600 mb-1">この状態が終わるシーン</label>
+          <SceneSelect value={f.valid_to} onChange={v => setF({...f, valid_to: v})} scenes={scenes} placeholder="（ずっと有効）" />
         </div>
       </div>
       <div>
@@ -38,8 +59,8 @@ function StateForm({ f, setF, onSubmit, onClose, label }: {
         <textarea value={f.appearance} onChange={e => setF({...f, appearance: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" rows={2} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">状態 (例: alive, dead, injured)</label>
-        <input value={f.status} onChange={e => setF({...f, status: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" />
+        <label className="block text-xs font-medium text-gray-600 mb-1">生死・状態</label>
+        <input value={f.status} onChange={e => setF({...f, status: e.target.value})} className="w-full border rounded px-2 py-1 text-sm" placeholder="例: 生存、死亡、負傷" />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
@@ -66,6 +87,7 @@ export default function Characters() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [states, setStates] = useState<CharacterState[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
   const [showAddState, setShowAddState] = useState(false);
   const [addStateForm, setAddStateForm] = useState(emptyStateForm);
   const [editStateId, setEditStateId] = useState<string | null>(null);
@@ -73,7 +95,10 @@ export default function Characters() {
 
   const load = () => api.characters.list().then(r => setCharacters(r.characters)).catch((e: Error) => setError(e.message));
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.scenes.list().then(r => setScenes(r.scenes));
+  }, []);
 
   const loadStates = (charId: string) =>
     api.characterStates.list(charId).then(r => setStates(r.states)).catch(() => setStates([]));
@@ -226,7 +251,7 @@ export default function Characters() {
           <div className="flex border-b mb-4">
             <button onClick={() => setCharTab('info')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${charTab === 'info' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>基本情報</button>
             <button onClick={() => setCharTab('states')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${charTab === 'states' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-              状態履歴{states.length > 0 ? `（${states.length}）` : ''}
+              外見・状態履歴{states.length > 0 ? `（${states.length}）` : ''}
             </button>
           </div>
 
@@ -239,11 +264,11 @@ export default function Characters() {
                   {states.map(s => (
                     <div key={s.id} className="border rounded-lg p-3 bg-gray-50">
                       {editStateId === s.id ? (
-                        <StateForm f={editStateForm} setF={setEditStateForm} onSubmit={handleEditState} onClose={() => setEditStateId(null)} label="保存" />
+                        <StateForm f={editStateForm} setF={setEditStateForm} onSubmit={handleEditState} onClose={() => setEditStateId(null)} label="保存" scenes={scenes} />
                       ) : (
                         <>
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <span className="text-xs font-mono text-gray-500">{s.valid_from} 〜 {s.valid_to ?? '現在'}</span>
+                            <span className="text-xs text-gray-500">{sceneTitle(s.valid_from, scenes) ?? s.valid_from} 〜 {s.valid_to ? (sceneTitle(s.valid_to, scenes) ?? s.valid_to) : 'ずっと有効'}</span>
                             <div className="flex gap-2 shrink-0">
                               <button onClick={() => openEditState(s)} className="text-xs text-indigo-500 hover:text-indigo-700">編集</button>
                               <button onClick={() => handleDeleteState(s.id)} className="text-xs text-red-400 hover:text-red-600">削除</button>
@@ -259,7 +284,7 @@ export default function Characters() {
                 </div>
               )}
               {showAddState ? (
-                <StateForm f={addStateForm} setF={setAddStateForm} onSubmit={handleAddState} onClose={() => setShowAddState(false)} label="追加" />
+                <StateForm f={addStateForm} setF={setAddStateForm} onSubmit={handleAddState} onClose={() => setShowAddState(false)} label="追加" scenes={scenes} />
               ) : (
                 <button onClick={() => setShowAddState(true)} className="w-full py-2 text-sm text-indigo-600 border border-dashed border-indigo-300 rounded-lg hover:bg-indigo-50">+ 状態を追加</button>
               )}
