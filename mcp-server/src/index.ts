@@ -163,6 +163,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
 
   const storyTime = scene.story_time as string | null;
+  const narrativeOrder = scene.narrative_order as number | null;
   const t = storyTime ?? "9999-99-99";
 
   const characterStates = storyTime
@@ -194,7 +195,52 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     ).bind(t, t).all()
   ).results : [];
 
-  return { scene, character_states: characterStates, world_rules: worldRules, consciousness_swaps: swaps };
+  // 登場人物
+  const sceneCharacters = (
+    await db.prepare(
+      `SELECT sc.*, c.name, c.role, c.aliases FROM scene_characters sc JOIN characters c ON sc.character_id = c.id WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
+    ).bind(args.scene_id).all()
+  ).results;
+
+  // 関係性（このシーン時点で有効）
+  const relationships = storyTime ? (
+    await db.prepare(
+      `SELECT r.*, ca.name as name_a, cb.name as name_b
+       FROM relationships r
+       JOIN characters ca ON r.character_id_a = ca.id
+       JOIN characters cb ON r.character_id_b = cb.id
+       WHERE (r.valid_from IS NULL OR r.valid_from <= ?)
+         AND (r.valid_to IS NULL OR r.valid_to > ?)
+       ORDER BY r.is_public DESC, ca.name`
+    ).bind(t, t).all()
+  ).results : (
+    await db.prepare(
+      `SELECT r.*, ca.name as name_a, cb.name as name_b
+       FROM relationships r
+       JOIN characters ca ON r.character_id_a = ca.id
+       JOIN characters cb ON r.character_id_b = cb.id
+       ORDER BY r.is_public DESC, ca.name`
+    ).all()
+  ).results;
+
+  // 前後のシーン（物語順）
+  const prevScene = narrativeOrder != null
+    ? await db.prepare(`SELECT id, title, narrative_order, story_time, location FROM scenes WHERE narrative_order < ? ORDER BY narrative_order DESC LIMIT 1`).bind(narrativeOrder).first()
+    : null;
+  const nextScene = narrativeOrder != null
+    ? await db.prepare(`SELECT id, title, narrative_order, story_time, location FROM scenes WHERE narrative_order > ? ORDER BY narrative_order ASC LIMIT 1`).bind(narrativeOrder).first()
+    : null;
+
+  return {
+    scene,
+    previous_scene: prevScene,
+    next_scene: nextScene,
+    scene_characters: sceneCharacters,
+    relationships,
+    character_states: characterStates,
+    consciousness_swaps: swaps,
+    world_rules: worldRules,
+  };
 }
 
 async function checkConflict(db: D1Database, args: { description: string; scene_time: string }): Promise<unknown> {
