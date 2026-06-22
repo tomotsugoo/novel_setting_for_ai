@@ -304,8 +304,59 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     ? await db.prepare(`SELECT id, title, narrative_order, story_time, location FROM scenes WHERE narrative_order > ? ORDER BY narrative_order ASC LIMIT 1`).bind(narrativeOrder).first()
     : null;
 
+  // 主人公ステータスを合成（意識の主 × 体の持ち主 × 外見状態）
+  let protagonistStatus: Record<string, unknown> | null = null;
+  const protagonistId = scene.protagonist_identity_id as string | null;
+  if (protagonistId) {
+    const identityChar = await db.prepare("SELECT id, name, role FROM characters WHERE id=?").bind(protagonistId).first() as { id: string; name: string; role: string } | null;
+
+    // この意識がどこかの体に入っているか
+    const swapOut = swaps.find((s: Record<string, unknown>) => s.from_character_id === protagonistId) as Record<string, unknown> | undefined;
+    // この意識の体（入れ替わりがあれば相手の体、なければ自分の体）
+    const bodyId = swapOut ? (swapOut.to_character_id as string) : protagonistId;
+    const bodyChar = bodyId !== protagonistId
+      ? await db.prepare("SELECT id, name FROM characters WHERE id=?").bind(bodyId).first() as { id: string; name: string } | null
+      : null;
+
+    // 体の外見状態
+    const bodyState = storyTime
+      ? await db.prepare(
+          `SELECT appearance, status, notes FROM character_states WHERE character_id=? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from DESC LIMIT 1`
+        ).bind(bodyId, t, t).first() as { appearance: string | null; status: string | null; notes: string | null } | null
+      : null;
+
+    // 意識の元々の外見状態（参考用）
+    const identityState = storyTime && bodyId !== protagonistId
+      ? await db.prepare(
+          `SELECT appearance, status FROM character_states WHERE character_id=? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from DESC LIMIT 1`
+        ).bind(protagonistId, t, t).first() as { appearance: string | null; status: string | null } | null
+      : null;
+
+    protagonistStatus = {
+      summary: swapOut
+        ? `【意識】${identityChar?.name}（本来の体は別）が【外見】${bodyChar?.name}の体に入っている状態`
+        : `【意識・外見とも】${identityChar?.name}本人（入れ替わりなし）`,
+      consciousness: {
+        character_id: protagonistId,
+        name: identityChar?.name,
+        note: "物語の内面視点・思考・感情はこのキャラのもの",
+        original_appearance: identityState?.appearance ?? null,
+      },
+      body: {
+        character_id: bodyId,
+        name: bodyChar?.name ?? identityChar?.name,
+        note: "読者・他キャラからはこの外見に見える",
+        current_appearance: bodyState?.appearance ?? null,
+        current_status: bodyState?.status ?? null,
+        appearance_notes: bodyState?.notes ?? null,
+      },
+      swap_active: !!swapOut,
+    };
+  }
+
   return {
     scene,
+    protagonist_status: protagonistStatus,
     previous_scene: prevScene,
     next_scene: nextScene,
     scene_characters: sceneCharacters,
