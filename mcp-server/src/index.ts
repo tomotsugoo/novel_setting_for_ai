@@ -268,12 +268,53 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     ).bind(t, t).all()
   ).results : [];
 
-  // 登場人物
+  // 登場人物（基本情報）
   const sceneCharacters = (
     await db.prepare(
-      `SELECT sc.*, c.name, c.role, c.aliases FROM scene_characters sc JOIN characters c ON sc.character_id = c.id WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
+      `SELECT sc.*, c.name, c.role, c.aliases, c.description, c.secret
+       FROM scene_characters sc JOIN characters c ON sc.character_id = c.id
+       WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
     ).bind(args.scene_id).all()
-  ).results;
+  ).results as Array<Record<string, unknown>>;
+
+  // 登場キャラごとに現在の状態・意識を統合（D1は逐次処理）
+  const charactersInScene: Array<Record<string, unknown>> = [];
+  for (const sc of sceneCharacters) {
+    const charId = sc.character_id as string;
+
+    // このシーン時点での外見・状態
+    const charState = storyTime
+      ? await db.prepare(
+          `SELECT appearance, status, notes FROM character_states WHERE character_id=? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?) ORDER BY valid_from DESC LIMIT 1`
+        ).bind(charId, t, t).first() as { appearance: string | null; status: string | null; notes: string | null } | null
+      : null;
+
+    // 意識の入れ替わり（このキャラの意識がどこかに移っているか）
+    const swapOut = swaps.find((s: Record<string, unknown>) => s.from_character_id === charId) as Record<string, unknown> | undefined;
+    // このキャラの体に誰かの意識が入っているか
+    const swapIn = swaps.find((s: Record<string, unknown>) => s.to_character_id === charId) as Record<string, unknown> | undefined;
+
+    let consciousnessNote: string | null = null;
+    if (swapOut) {
+      consciousnessNote = `【意識退出】この体の本来の持ち主だが、意識は「${swapOut.to_name}」の体に移っている`;
+    } else if (swapIn) {
+      consciousnessNote = `【意識受入】この体には「${swapIn.from_name}」の意識が入っている（外見はこのキャラだが、中身は別人）`;
+    }
+
+    charactersInScene.push({
+      character_id: charId,
+      name: sc.name,
+      aliases: sc.aliases,
+      role: sc.role,
+      role_in_scene: sc.role_in_scene,
+      description: sc.description,
+      secret: sc.secret,
+      current_appearance: charState?.appearance ?? null,
+      current_status: charState?.status ?? null,
+      state_notes: charState?.notes ?? null,
+      consciousness_note: consciousnessNote,
+    });
+  }
 
   // 関係性（このシーン時点で有効）
   const relationships = storyTime ? (
@@ -357,12 +398,10 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   return {
     scene,
     protagonist_status: protagonistStatus,
+    characters_in_scene: charactersInScene,
     previous_scene: prevScene,
     next_scene: nextScene,
-    scene_characters: sceneCharacters,
     relationships,
-    character_states: characterStates,
-    consciousness_swaps: swaps,
     world_rules: worldRules,
   };
 }
