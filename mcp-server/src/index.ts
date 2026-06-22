@@ -588,6 +588,7 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
       scenes: scenes.length,
       swaps: swaps.length,
     },
+    scene_list: scenes.map(s => ({ id: s.id, title: s.title, narrative_order: s.narrative_order, story_time: s.story_time })),
   };
 }
 
