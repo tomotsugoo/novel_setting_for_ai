@@ -79,6 +79,79 @@ const TOOLS = [
       properties: {},
     },
   },
+  {
+    name: "save_scene_body",
+    description: "シーンの本文を保存する。執筆した本文テキストをシーンIDを指定してDBに書き込む。is_writtenも同時にtrueにする。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+        body: { type: "string", description: "本文テキスト" },
+      },
+      required: ["scene_id", "body"],
+    },
+  },
+  {
+    name: "update_scene",
+    description: "シーンのメタ情報（タイトル・場所・開示メモ等）を更新する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+        title: { type: "string", description: "タイトル" },
+        location: { type: "string", description: "場所" },
+        disclosure_notes: { type: "string", description: "開示メモ（読者への開示状況メモ）" },
+      },
+      required: ["scene_id"],
+    },
+  },
+  {
+    name: "create_character",
+    description: "新しいキャラクターをDBに登録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "キャラクターID（英数字・ハイフン）" },
+        name: { type: "string", description: "名前" },
+        aliases: { type: "string", description: "別名・呼び名（複数あればカンマ区切り）" },
+        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
+        description: { type: "string", description: "説明・プロフィール" },
+        secret: { type: "string", description: "秘密・読者非開示情報" },
+      },
+      required: ["id", "name"],
+    },
+  },
+  {
+    name: "add_character_state",
+    description: "キャラクターの状態変化（外見・生死・メモ）をシーン時点で記録する。意識入れ替わりや変身・変装などの変化を記録するのに使う。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        character_id: { type: "string", description: "キャラクターID" },
+        scene_id: { type: "string", description: "この状態になるシーンID（valid_fromに使用）" },
+        appearance: { type: "string", description: "外見の説明" },
+        status: { type: "string", description: "状態（例: 生存、死亡、負傷）" },
+        notes: { type: "string", description: "メモ" },
+      },
+      required: ["character_id", "scene_id"],
+    },
+  },
+  {
+    name: "add_relationship",
+    description: "キャラクター間の関係性を登録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        character_id_a: { type: "string", description: "キャラクターAのID" },
+        character_id_b: { type: "string", description: "キャラクターBのID" },
+        relation_type: { type: "string", description: "関係の種類（例: 幼馴染、師弟、恋人、敵対）" },
+        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
+        from_scene_id: { type: "string", description: "この関係が始まるシーンID（省略可）" },
+        notes: { type: "string", description: "メモ" },
+      },
+      required: ["character_id_a", "character_id_b", "relation_type"],
+    },
+  },
 ];
 
 async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
@@ -413,6 +486,55 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   };
 }
 
+async function saveSceneBody(db: D1Database, args: { scene_id: string; body: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first();
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await db.prepare("UPDATE scenes SET body=?, is_written=1 WHERE id=?").bind(args.body, args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id, title: scene.title, characters: args.body.length };
+}
+
+async function updateScene(db: D1Database, args: { scene_id: string; title?: string; location?: string; disclosure_notes?: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await db.prepare(
+    "UPDATE scenes SET title=COALESCE(?,title), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes) WHERE id=?"
+  ).bind(args.title ?? null, args.location ?? null, args.disclosure_notes ?? null, args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id };
+}
+
+async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string }): Promise<unknown> {
+  const exists = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
+  if (exists) return { error: `Character '${args.id}' already exists` };
+  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret) VALUES (?,?,?,?,?,?)")
+    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null).run();
+  return { ok: true, id: args.id, name: args.name };
+}
+
+async function addCharacterState(db: D1Database, args: { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT story_time, title FROM scenes WHERE id=?").bind(args.scene_id).first() as { story_time: string | null; title: string } | null;
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  if (!scene.story_time) return { error: `Scene '${args.scene_id}' has no story_time set` };
+  const char = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.character_id).first();
+  if (!char) return { error: `Character '${args.character_id}' not found` };
+  const id = crypto.randomUUID();
+  await db.prepare("INSERT INTO character_states (id,character_id,valid_from,appearance,status,notes) VALUES (?,?,?,?,?,?)")
+    .bind(id, args.character_id, scene.story_time, args.appearance ?? null, args.status ?? null, args.notes ?? null).run();
+  return { ok: true, id, character_id: args.character_id, valid_from: scene.story_time, scene_title: scene.title };
+}
+
+async function addRelationship(db: D1Database, args: { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string }): Promise<unknown> {
+  let validFrom: string | null = null;
+  if (args.from_scene_id) {
+    const scene = await db.prepare("SELECT story_time FROM scenes WHERE id=?").bind(args.from_scene_id).first() as { story_time: string | null } | null;
+    if (!scene) return { error: `Scene '${args.from_scene_id}' not found` };
+    validFrom = scene.story_time;
+  }
+  const id = crypto.randomUUID();
+  await db.prepare("INSERT INTO relationships (id,character_id_a,character_id_b,relation_type,is_public,valid_from,notes) VALUES (?,?,?,?,?,?,?)")
+    .bind(id, args.character_id_a, args.character_id_b, args.relation_type, args.is_public ? 1 : 0, validFrom, args.notes ?? null).run();
+  return { ok: true, id };
+}
+
 async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse> {
   const { id, method, params = {} } = req;
   try {
@@ -455,6 +577,21 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             break;
           case "check_all_consistency":
             toolResult = await checkAllConsistency(env.DB);
+            break;
+          case "save_scene_body":
+            toolResult = await saveSceneBody(env.DB, toolArgs as { scene_id: string; body: string });
+            break;
+          case "update_scene":
+            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; location?: string; disclosure_notes?: string });
+            break;
+          case "create_character":
+            toolResult = await createCharacter(env.DB, toolArgs as { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string });
+            break;
+          case "add_character_state":
+            toolResult = await addCharacterState(env.DB, toolArgs as { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string });
+            break;
+          case "add_relationship":
+            toolResult = await addRelationship(env.DB, toolArgs as { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string });
             break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
