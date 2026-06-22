@@ -38,6 +38,14 @@ const TOOLS = [
     },
   },
   {
+    name: "list_scenes",
+    description: "全シーン一覧を取得する（id・タイトル・執筆順・物語時間・執筆済みフラグ）。シーンIDを調べるときに使う。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "get_scene_context",
     description: "Get scene info, character states valid at story_time, and world rules",
     inputSchema: {
@@ -229,6 +237,13 @@ async function getCharacter(db: D1Database, args: { id: string; scene_time?: str
 async function listCharacters(db: D1Database): Promise<unknown> {
   const result = await db.prepare("SELECT id, name, aliases, role FROM characters ORDER BY name").all();
   return { characters: result.results };
+}
+
+async function listScenes(db: D1Database): Promise<unknown> {
+  const result = await db.prepare(
+    "SELECT id, title, narrative_order, story_time, location, is_written FROM scenes ORDER BY narrative_order ASC, story_time ASC"
+  ).all();
+  return { scenes: result.results };
 }
 
 async function getSceneContext(db: D1Database, args: { scene_id: string }): Promise<unknown> {
@@ -655,6 +670,9 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             break;
           case "list_characters":
             toolResult = await listCharacters(env.DB);
+            break;
+          case "list_scenes":
+            toolResult = await listScenes(env.DB);
             break;
           case "get_scene_context":
             toolResult = await getSceneContext(env.DB, toolArgs as { scene_id: string });
