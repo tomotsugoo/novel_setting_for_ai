@@ -71,6 +71,87 @@ const TOOLS = [
       required: ["scene_id"],
     },
   },
+  {
+    name: "check_all_consistency",
+    description: "全データを横断して整合性・矛盾をチェックする。意識入れ替わりの時系列矛盾、シーンのprotagonist_identity_idとswapの整合性、孤立キャラ・孤立シーン、narrative_orderの重複・欠番を検出する。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "save_scene_body",
+    description: "シーンの本文を保存する。執筆した本文テキストをシーンIDを指定してDBに書き込む。is_writtenも同時にtrueにする。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+        body: { type: "string", description: "本文テキスト" },
+      },
+      required: ["scene_id", "body"],
+    },
+  },
+  {
+    name: "update_scene",
+    description: "シーンのメタ情報（タイトル・場所・開示メモ等）を更新する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+        title: { type: "string", description: "タイトル" },
+        location: { type: "string", description: "場所" },
+        disclosure_notes: { type: "string", description: "開示メモ（読者への開示状況メモ）" },
+      },
+      required: ["scene_id"],
+    },
+  },
+  {
+    name: "create_character",
+    description: "新しいキャラクターをDBに登録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "キャラクターID（英数字・ハイフン）" },
+        name: { type: "string", description: "名前" },
+        aliases: { type: "string", description: "別名・呼び名（複数あればカンマ区切り）" },
+        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
+        description: { type: "string", description: "説明・プロフィール" },
+        secret: { type: "string", description: "秘密・読者非開示情報" },
+      },
+      required: ["id", "name"],
+    },
+  },
+  {
+    name: "add_character_state",
+    description: "キャラクターの状態変化（外見・生死・メモ）をシーン時点で記録する。意識入れ替わりや変身・変装などの変化を記録するのに使う。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        character_id: { type: "string", description: "キャラクターID" },
+        scene_id: { type: "string", description: "この状態になるシーンID（valid_fromに使用）" },
+        appearance: { type: "string", description: "外見の説明" },
+        status: { type: "string", description: "状態（例: 生存、死亡、負傷）" },
+        notes: { type: "string", description: "メモ" },
+      },
+      required: ["character_id", "scene_id"],
+    },
+  },
+  {
+    name: "add_relationship",
+    description: "キャラクター間の関係性を登録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        character_id_a: { type: "string", description: "キャラクターAのID" },
+        character_id_b: { type: "string", description: "キャラクターBのID" },
+        relation_type: { type: "string", description: "関係の種類（例: 幼馴染、師弟、恋人、敵対）" },
+        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
+        from_scene_id: { type: "string", description: "この関係が始まるシーンID（省略可）" },
+        notes: { type: "string", description: "メモ" },
+      },
+      required: ["character_id_a", "character_id_b", "relation_type"],
+    },
+  },
 ];
 
 async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
@@ -245,6 +326,169 @@ async function getDisclosureLevel(db: D1Database, args: { scene_id: string }): P
   return { scene_id: args.scene_id, title: scene.title, story_time: scene.story_time, disclosure_notes: scene.disclosure_notes, relationships };
 }
 
+async function checkAllConsistency(db: D1Database): Promise<unknown> {
+  const issues: { severity: "error" | "warning" | "info"; category: string; message: string }[] = [];
+
+  const characters = (await db.prepare("SELECT id, name FROM characters").all()).results as Array<{ id: string; name: string }>;
+  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null }>;
+  const swaps = (await db.prepare("SELECT * FROM consciousness_swaps ORDER BY swapped_at").all()).results as Array<{ id: string; from_character_id: string; to_character_id: string; swapped_at: string; resolved_at: string | null; trigger_event: string | null; notes: string | null }>;
+  const sceneChars = (await db.prepare("SELECT scene_id, character_id FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string }>;
+
+  const charIds = new Set(characters.map(c => c.id));
+  const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
+
+  // 1. 意識入れ替わりの時系列矛盾
+  for (const sw of swaps) {
+    if (sw.resolved_at && sw.resolved_at <= sw.swapped_at) {
+      issues.push({ severity: "error", category: "意識入れ替わり", message: `「${charName(sw.from_character_id)}→${charName(sw.to_character_id)}」の解決日時(${sw.resolved_at})が入れ替わり日時(${sw.swapped_at})以前です` });
+    }
+  }
+
+  // 2. 同一キャラが同時期に複数の入れ替わりに関与
+  for (let i = 0; i < swaps.length; i++) {
+    for (let j = i + 1; j < swaps.length; j++) {
+      const a = swaps[i], b = swaps[j];
+      const aEnd = a.resolved_at ?? "9999-99-99";
+      const bEnd = b.resolved_at ?? "9999-99-99";
+      const overlap = a.swapped_at < bEnd && b.swapped_at < aEnd;
+      if (!overlap) continue;
+      const aChars = new Set([a.from_character_id, a.to_character_id]);
+      const bChars = new Set([b.from_character_id, b.to_character_id]);
+      for (const cid of aChars) {
+        if (bChars.has(cid)) {
+          issues.push({ severity: "error", category: "意識入れ替わり", message: `「${charName(cid)}」が同時期に複数の入れ替わりに関与しています（ID: ${a.id} と ${b.id}）` });
+        }
+      }
+    }
+  }
+
+  // 3. 入れ替わりに存在しないキャラIDが使われている
+  for (const sw of swaps) {
+    if (!charIds.has(sw.from_character_id)) {
+      issues.push({ severity: "error", category: "参照整合性", message: `入れ替わり(${sw.id})のfrom_character_id「${sw.from_character_id}」はキャラとして登録されていません` });
+    }
+    if (!charIds.has(sw.to_character_id)) {
+      issues.push({ severity: "error", category: "参照整合性", message: `入れ替わり(${sw.id})のto_character_id「${sw.to_character_id}」はキャラとして登録されていません` });
+    }
+  }
+
+  // 4. シーンのprotagonist_identity_idとその時刻のswapが一致しているか
+  for (const scene of scenes) {
+    if (!scene.protagonist_identity_id || !scene.story_time) continue;
+    const t = scene.story_time;
+    const activeSwap = swaps.find(sw =>
+      sw.swapped_at <= t && (sw.resolved_at == null || sw.resolved_at > t) &&
+      (sw.from_character_id === scene.protagonist_identity_id || sw.to_character_id === scene.protagonist_identity_id)
+    );
+    if (!activeSwap && !charIds.has(scene.protagonist_identity_id)) {
+      issues.push({ severity: "error", category: "シーン自認", message: `シーン「${scene.title}」のprotagonist_identity_id「${scene.protagonist_identity_id}」はキャラ未登録です` });
+    }
+  }
+
+  // 5. narrative_orderの重複
+  const orders = scenes.map(s => s.narrative_order).filter(o => o != null) as number[];
+  const orderCount: Record<number, number> = {};
+  for (const o of orders) orderCount[o] = (orderCount[o] ?? 0) + 1;
+  for (const [o, count] of Object.entries(orderCount)) {
+    if (count > 1) {
+      const dups = scenes.filter(s => s.narrative_order === Number(o)).map(s => `「${s.title}」`).join(", ");
+      issues.push({ severity: "error", category: "シーン順序", message: `第${o}話が重複しています: ${dups}` });
+    }
+  }
+
+  // 6. narrative_orderの欠番
+  if (orders.length > 0) {
+    const max = Math.max(...orders);
+    for (let i = 1; i <= max; i++) {
+      if (!orderCount[i]) {
+        issues.push({ severity: "warning", category: "シーン順序", message: `第${i}話が欠番です` });
+      }
+    }
+  }
+
+  // 7. どのシーンにも登場しないキャラ
+  const appearedChars = new Set(sceneChars.map(sc => sc.character_id));
+  for (const c of characters) {
+    if (!appearedChars.has(c.id)) {
+      issues.push({ severity: "info", category: "孤立データ", message: `キャラ「${c.name}」はどのシーンにも登場していません` });
+    }
+  }
+
+  // 8. story_timeのないシーンの数
+  const noTimeScenes = scenes.filter(s => !s.story_time);
+  if (noTimeScenes.length > 0) {
+    issues.push({ severity: "info", category: "シーン情報", message: `物語時間が未設定のシーンが${noTimeScenes.length}件あります: ${noTimeScenes.map(s => `「${s.title}」`).join(", ")}` });
+  }
+
+  const errors = issues.filter(i => i.severity === "error");
+  const warnings = issues.filter(i => i.severity === "warning");
+  const infos = issues.filter(i => i.severity === "info");
+
+  return {
+    summary: {
+      errors: errors.length,
+      warnings: warnings.length,
+      info: infos.length,
+      total_issues: issues.length,
+    },
+    issues,
+    stats: {
+      characters: characters.length,
+      scenes: scenes.length,
+      swaps: swaps.length,
+    },
+  };
+}
+
+async function saveSceneBody(db: D1Database, args: { scene_id: string; body: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first();
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await db.prepare("UPDATE scenes SET body=?, is_written=1 WHERE id=?").bind(args.body, args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id, title: scene.title, characters: args.body.length };
+}
+
+async function updateScene(db: D1Database, args: { scene_id: string; title?: string; location?: string; disclosure_notes?: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await db.prepare(
+    "UPDATE scenes SET title=COALESCE(?,title), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes) WHERE id=?"
+  ).bind(args.title ?? null, args.location ?? null, args.disclosure_notes ?? null, args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id };
+}
+
+async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string }): Promise<unknown> {
+  const exists = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
+  if (exists) return { error: `Character '${args.id}' already exists` };
+  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret) VALUES (?,?,?,?,?,?)")
+    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null).run();
+  return { ok: true, id: args.id, name: args.name };
+}
+
+async function addCharacterState(db: D1Database, args: { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT story_time, title FROM scenes WHERE id=?").bind(args.scene_id).first() as { story_time: string | null; title: string } | null;
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  if (!scene.story_time) return { error: `Scene '${args.scene_id}' has no story_time set` };
+  const char = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.character_id).first();
+  if (!char) return { error: `Character '${args.character_id}' not found` };
+  const id = crypto.randomUUID();
+  await db.prepare("INSERT INTO character_states (id,character_id,valid_from,appearance,status,notes) VALUES (?,?,?,?,?,?)")
+    .bind(id, args.character_id, scene.story_time, args.appearance ?? null, args.status ?? null, args.notes ?? null).run();
+  return { ok: true, id, character_id: args.character_id, valid_from: scene.story_time, scene_title: scene.title };
+}
+
+async function addRelationship(db: D1Database, args: { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string }): Promise<unknown> {
+  let validFrom: string | null = null;
+  if (args.from_scene_id) {
+    const scene = await db.prepare("SELECT story_time FROM scenes WHERE id=?").bind(args.from_scene_id).first() as { story_time: string | null } | null;
+    if (!scene) return { error: `Scene '${args.from_scene_id}' not found` };
+    validFrom = scene.story_time;
+  }
+  const id = crypto.randomUUID();
+  await db.prepare("INSERT INTO relationships (id,character_id_a,character_id_b,relation_type,is_public,valid_from,notes) VALUES (?,?,?,?,?,?,?)")
+    .bind(id, args.character_id_a, args.character_id_b, args.relation_type, args.is_public ? 1 : 0, validFrom, args.notes ?? null).run();
+  return { ok: true, id };
+}
+
 async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse> {
   const { id, method, params = {} } = req;
   try {
@@ -284,6 +528,24 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             break;
           case "get_disclosure_level":
             toolResult = await getDisclosureLevel(env.DB, toolArgs as { scene_id: string });
+            break;
+          case "check_all_consistency":
+            toolResult = await checkAllConsistency(env.DB);
+            break;
+          case "save_scene_body":
+            toolResult = await saveSceneBody(env.DB, toolArgs as { scene_id: string; body: string });
+            break;
+          case "update_scene":
+            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; location?: string; disclosure_notes?: string });
+            break;
+          case "create_character":
+            toolResult = await createCharacter(env.DB, toolArgs as { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string });
+            break;
+          case "add_character_state":
+            toolResult = await addCharacterState(env.DB, toolArgs as { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string });
+            break;
+          case "add_relationship":
+            toolResult = await addRelationship(env.DB, toolArgs as { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string });
             break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
