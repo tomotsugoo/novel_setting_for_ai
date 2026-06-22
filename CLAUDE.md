@@ -44,9 +44,10 @@ Workers Builds の設定:
 
 | ツール | 引数 | 説明 |
 |---|---|---|
-| `get_character` | `id`, `scene_time?` | キャラ情報＋指定時刻での意識状態 |
+| `list_scenes` | なし | 全シーン一覧（ID・タイトル・執筆順・執筆済みフラグ） |
 | `list_characters` | なし | 全キャラ一覧 |
-| `get_scene_context` | `scene_id` | シーン情報＋キャラ状態＋世界ルール |
+| `get_scene_context` | `scene_id` | シーン情報＋登場キャラ詳細（外見・意識統合）＋関係性＋世界ルール |
+| `get_character` | `id`, `scene_time?` | キャラ情報＋指定時刻での意識状態 |
 | `check_conflict` | `description`, `scene_time` | 特定記述×特定時刻の矛盾チェック |
 | `get_disclosure_level` | `scene_id` | 開示ノート・関係性の可視状態 |
 | `check_all_consistency` | なし | 全データ横断の整合性チェック（時系列矛盾・参照整合性・順序重複/欠番・孤立データ） |
