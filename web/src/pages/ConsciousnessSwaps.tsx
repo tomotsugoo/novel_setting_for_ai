@@ -3,7 +3,7 @@ import { api, ConsciousnessSwap, Character, Scene } from '../api';
 import Modal from '../components/Modal';
 import { genId } from '../utils';
 
-type SwapFormData = { from_character_id: string; to_character_id: string; swapped_at_scene: string; resolved_at_scene: string; ego_recovered_at_scene: string; trigger_event: string; notes: string };
+type SwapFormData = { from_character_id: string; source_body_id: string; to_character_id: string; swapped_at_scene: string; resolved_at_scene: string; ego_recovered_at_scene: string; trigger_event: string; notes: string };
 
 function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes }: {
   f: SwapFormData;
@@ -25,7 +25,14 @@ function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes 
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">乗り移った体の持ち主（TO）</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">元の体の持ち主（意識が出た体）</label>
+        <select value={f.source_body_id} onChange={e => setF({...f, source_body_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">意識の持ち主と同じ</option>
+          {characters.map(c => <option key={c.id} value={c.id}>{c.name}{c.aliases ? `（${c.aliases}）` : ''}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">乗り移った体の持ち主（意識が入った体）</label>
         <select required value={f.to_character_id} onChange={e => setF({...f, to_character_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
           <option value="">選択</option>
           {characters.map(c => <option key={c.id} value={c.id}>{c.name}{c.aliases ? `（${c.aliases}）` : ''}</option>)}
@@ -74,10 +81,10 @@ export default function ConsciousnessSwaps() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editSwap, setEditSwap] = useState<ConsciousnessSwap | null>(null);
-  const [editForm, setEditForm] = useState<SwapFormData>({ from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
+  const [editForm, setEditForm] = useState<SwapFormData>({ from_character_id: '', source_body_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<SwapFormData & { id: string }>({
-    id: genId(), from_character_id: '', to_character_id: '',
+    id: genId(), from_character_id: '', source_body_id: '', to_character_id: '',
     swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '',
     trigger_event: '', notes: '',
   });
@@ -101,6 +108,7 @@ export default function ConsciousnessSwaps() {
     const egoRecoveredScene = swap.ego_recovered_at ? sceneByTime(swap.ego_recovered_at) : null;
     setEditForm({
       from_character_id: swap.from_character_id,
+      source_body_id: swap.source_body_id ?? '',
       to_character_id: swap.to_character_id,
       swapped_at_scene: swappedScene?.id ?? '',
       resolved_at_scene: resolvedScene?.id ?? '',
@@ -129,6 +137,7 @@ export default function ConsciousnessSwaps() {
       await api.consciousnessSwaps.create({
         id: form.id,
         from_character_id: form.from_character_id,
+        source_body_id: form.source_body_id || null,
         to_character_id: form.to_character_id,
         swapped_at,
         resolved_at: resolved_at || undefined,
@@ -137,7 +146,7 @@ export default function ConsciousnessSwaps() {
         notes: form.notes || undefined,
       });
       setShowAdd(false);
-      setForm({ id: genId(), from_character_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
+      setForm({ id: genId(), from_character_id: '', source_body_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -152,6 +161,7 @@ export default function ConsciousnessSwaps() {
     try {
       await api.consciousnessSwaps.update(editSwap.id, {
         from_character_id: editForm.from_character_id,
+        source_body_id: editForm.source_body_id || null,
         to_character_id: editForm.to_character_id,
         swapped_at,
         resolved_at,
@@ -230,10 +240,11 @@ export default function ConsciousnessSwaps() {
                     </div>
                     <p className="font-semibold text-gray-900">
                       <span className="text-indigo-600">{swap.from_name ?? charName(swap.from_character_id)}</span>
-                      <span className="text-gray-400 mx-2">の意識</span>
-                      →
-                      <span className="text-red-600 mx-2">{swap.to_name ?? charName(swap.to_character_id)}</span>
-                      <span className="text-gray-400">の体に入っている</span>
+                      <span className="text-gray-400 mx-1">の意識が</span>
+                      <span className="text-gray-500">{swap.source_body_name ?? (swap.source_body_id ? charName(swap.source_body_id) : (swap.from_name ?? charName(swap.from_character_id)))}</span>
+                      <span className="text-gray-400 mx-1">の体から</span>
+                      <span className="text-red-600">{swap.to_name ?? charName(swap.to_character_id)}</span>
+                      <span className="text-gray-400 ml-1">の体へ</span>
                     </p>
                     {swap.trigger_event && <p className="text-sm text-gray-500 mt-1">原因: {swap.trigger_event}</p>}
                     {swap.notes && <p className="text-sm text-gray-400 mt-1">{swap.notes}</p>}
