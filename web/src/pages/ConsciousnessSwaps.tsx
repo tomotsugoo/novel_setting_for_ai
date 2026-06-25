@@ -39,7 +39,7 @@ function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes 
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わり終了シーン（任意）※体が元に戻る・消滅するシーン</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">入れ替わり終了シーン（任意）※体の死亡・別の体への移動が起きるシーン</label>
         <select value={f.resolved_at_scene} onChange={e => setF({...f, resolved_at_scene: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
           <option value="">（未終了）</option>
           {scenes.map(s => <option key={s.id} value={s.id}>{sceneLabel(s)}</option>)}
