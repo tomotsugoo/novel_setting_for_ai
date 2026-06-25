@@ -407,6 +407,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
         appearance_notes: bodyState?.notes ?? null,
       },
       swap_active: !!swapOut,
+      ego_recovered_at: swapOut ? (swapOut.ego_recovered_at ?? null) : null,
     };
   }
 
@@ -850,27 +851,29 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       if (method === 'POST') {
         const body = await request.json() as {
           id: string; from_character_id: string; to_character_id: string;
-          swapped_at: string; resolved_at?: string;
+          swapped_at: string; resolved_at?: string; ego_recovered_at?: string;
           trigger_event?: string; notes?: string;
         };
         await env.DB.prepare(
-          `INSERT INTO consciousness_swaps (id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO consciousness_swaps (id, from_character_id, to_character_id, swapped_at, resolved_at, ego_recovered_at, trigger_event, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           body.id, body.from_character_id, body.to_character_id,
           body.swapped_at, body.resolved_at ?? null,
+          body.ego_recovered_at ?? null,
           body.trigger_event ?? null, body.notes ?? null
         ).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {from_character_id?: string; to_character_id?: string; swapped_at?: string; resolved_at?: string | null; trigger_event?: string | null; notes?: string | null};
+        const body = await request.json() as {from_character_id?: string; to_character_id?: string; swapped_at?: string; resolved_at?: string | null; ego_recovered_at?: string | null; trigger_event?: string | null; notes?: string | null};
         await env.DB.prepare(
           `UPDATE consciousness_swaps SET
             from_character_id=COALESCE(?,from_character_id),
             to_character_id=COALESCE(?,to_character_id),
             swapped_at=COALESCE(?,swapped_at),
             resolved_at=CASE WHEN ?=1 THEN ? ELSE resolved_at END,
+            ego_recovered_at=CASE WHEN ?=1 THEN ? ELSE ego_recovered_at END,
             trigger_event=CASE WHEN ?=1 THEN ? ELSE trigger_event END,
             notes=CASE WHEN ?=1 THEN ? ELSE notes END
            WHERE id=?`
@@ -879,6 +882,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           body.to_character_id ?? null,
           body.swapped_at ?? null,
           'resolved_at' in body ? 1 : 0, body.resolved_at ?? null,
+          'ego_recovered_at' in body ? 1 : 0, body.ego_recovered_at ?? null,
           'trigger_event' in body ? 1 : 0, body.trigger_event ?? null,
           'notes' in body ? 1 : 0, body.notes ?? null,
           id
@@ -1016,6 +1020,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         `INSERT OR IGNORE INTO relationships_new SELECT id,character_id_a,character_id_b,relation_type,is_public,valid_from,valid_to,notes FROM relationships`,
         `DROP TABLE IF EXISTS relationships`,
         `ALTER TABLE relationships_new RENAME TO relationships`,
+        `ALTER TABLE consciousness_swaps ADD COLUMN ego_recovered_at TEXT NULL`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

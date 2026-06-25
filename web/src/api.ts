@@ -77,7 +77,7 @@ export interface ConsciousnessSwap {
   id: string;
   from_character_id: string; from_name?: string;
   to_character_id: string; to_name?: string;
-  swapped_at: string; resolved_at: string | null;
+  swapped_at: string; resolved_at: string | null; ego_recovered_at: string | null;
   trigger_event: string | null; notes: string | null;
 }
 export interface CharacterState {
