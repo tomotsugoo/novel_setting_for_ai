@@ -331,8 +331,9 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     });
   }
 
-  // 関係性（このシーン時点で有効）
-  const relationships = storyTime ? (
+  // 関係性（このシーン時点で有効 かつ 登場キャラが絡むもの）
+  const sceneCharacterIds = new Set(sceneCharacters.map((sc: Record<string, unknown>) => sc.character_id as string));
+  const allRelationships = storyTime ? (
     await db.prepare(
       `SELECT r.*, ca.name as name_a, cb.name as name_b
        FROM relationships r
@@ -351,6 +352,11 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
        ORDER BY r.is_public DESC, ca.name`
     ).all()
   ).results;
+  const relationships = sceneCharacterIds.size > 0
+    ? (allRelationships as Array<Record<string, unknown>>).filter(r =>
+        sceneCharacterIds.has(r.character_id_a as string) || sceneCharacterIds.has(r.character_id_b as string)
+      )
+    : allRelationships;
 
   // 前後のシーン（物語順）
   const prevScene = narrativeOrder != null

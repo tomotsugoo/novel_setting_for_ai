@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Scene, ConsciousnessSwap, Character, SceneCharacter } from '../api';
+import { api, Scene, ConsciousnessSwap, Character, SceneCharacter, Relationship } from '../api';
 
 function Avatar({ src, name }: { src: string | null; name: string }) {
   if (src) return <img src={src} alt={name} className="w-6 h-6 rounded-full object-cover shrink-0" />;
@@ -14,6 +14,7 @@ export default function Timeline() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [swaps, setSwaps] = useState<ConsciousnessSwap[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [sceneCharsMap, setSceneCharsMap] = useState<Record<string, SceneCharacter[]>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -22,10 +23,12 @@ export default function Timeline() {
       api.scenes.list(),
       api.consciousnessSwaps.list(),
       api.characters.list(),
-    ]).then(async ([s, sw, c]) => {
+      api.relationships.list(),
+    ]).then(async ([s, sw, c, rel]) => {
       setScenes(s.scenes);
       setSwaps(sw.swaps);
       setCharacters(c.characters);
+      setRelationships(rel.relationships);
       const map: Record<string, SceneCharacter[]> = {};
       await Promise.all(s.scenes.map(async scene => {
         try {
@@ -54,6 +57,14 @@ export default function Timeline() {
     return { starts, ends };
   };
 
+  // シーン時点で有効かつ登場キャラが絡む関係性
+  const relsForScene = (time: string, charIds: Set<string>) =>
+    relationships.filter(r => {
+      const timeOk = (r.valid_from == null || r.valid_from <= time) && (r.valid_to == null || r.valid_to > time);
+      const charOk = charIds.has(r.character_id_a) || charIds.has(r.character_id_b);
+      return timeOk && charOk;
+    });
+
   if (error) return <div className="text-red-500">Error: {error}</div>;
 
   return (
@@ -68,6 +79,8 @@ export default function Timeline() {
             {sorted.map(s => {
               const chars = sceneCharsMap[s.id] ?? [];
               const { starts, ends } = swapsAtTime(s.story_time!);
+              const charIdSet = new Set(chars.map(c => c.character_id));
+              const rels = chars.length > 0 ? relsForScene(s.story_time!, charIdSet) : [];
               return (
                 <div key={s.id} className="relative flex items-start gap-4">
                   <div className="relative z-10 flex items-center justify-center w-16 h-16 shrink-0">
@@ -116,6 +129,16 @@ export default function Timeline() {
                           <span key={sc.character_id} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 pl-1 pr-2 py-0.5 rounded-full">
                             <Avatar src={charAvatar(sc.character_id)} name={sc.name} />
                             {sc.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {rels.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {rels.map(r => (
+                          <span key={r.id} className={`text-xs px-2 py-0.5 rounded-full border ${r.is_public ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                            {r.name_a ?? charName(r.character_id_a)} ↔ {r.name_b ?? charName(r.character_id_b)}: {r.relation_type}
+                            {!r.is_public && ' 🔒'}
                           </span>
                         ))}
                       </div>
