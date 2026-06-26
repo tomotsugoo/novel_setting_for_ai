@@ -26,8 +26,8 @@ function SwapForm({ f, setF, onSubmit, onClose, submitLabel, characters, scenes 
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">元の体の持ち主（意識が出た体）</label>
-        <select value={f.source_body_id} onChange={e => setF({...f, source_body_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-          <option value="">意識の持ち主と同じ</option>
+        <select required value={f.source_body_id} onChange={e => setF({...f, source_body_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <option value="">選択</option>
           {characters.map(c => <option key={c.id} value={c.id}>{c.name}{c.aliases ? `（${c.aliases}）` : ''}</option>)}
         </select>
       </div>
@@ -84,7 +84,7 @@ export default function ConsciousnessSwaps() {
   const [editForm, setEditForm] = useState<SwapFormData>({ from_character_id: '', source_body_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<SwapFormData & { id: string }>({
-    id: genId(), from_character_id: '', source_body_id: '', to_character_id: '',
+    id: genId(), from_character_id: 'hoshifune-inori', source_body_id: '', to_character_id: '',
     swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '',
     trigger_event: '', notes: '',
   });
@@ -146,7 +146,7 @@ export default function ConsciousnessSwaps() {
         notes: form.notes || undefined,
       });
       setShowAdd(false);
-      setForm({ id: genId(), from_character_id: '', source_body_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
+      setForm({ id: genId(), from_character_id: 'hoshifune-inori', source_body_id: '', to_character_id: '', swapped_at_scene: '', resolved_at_scene: '', ego_recovered_at_scene: '', trigger_event: '', notes: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
