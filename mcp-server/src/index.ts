@@ -366,9 +366,10 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     ? await db.prepare(`SELECT id, title, narrative_order, story_time, location FROM scenes WHERE narrative_order > ? ORDER BY narrative_order ASC LIMIT 1`).bind(narrativeOrder).first()
     : null;
 
-  // 主人公ステータスを合成（意識の主 × 体の持ち主 × 外見状態）
+  // 主人公ステータスを合成（視点キャラ(is_pov=1) × 体の持ち主 × 外見状態）
   let protagonistStatus: Record<string, unknown> | null = null;
-  const protagonistId = scene.protagonist_identity_id as string | null;
+  const povChar = sceneCharacters.find((sc: Record<string, unknown>) => sc.is_pov === 1);
+  const protagonistId = povChar ? (povChar.character_id as string) : null;
   if (protagonistId) {
     const identityChar = await db.prepare("SELECT id, name, role FROM characters WHERE id=?").bind(protagonistId).first() as { id: string; name: string; role: string } | null;
 
@@ -424,6 +425,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
       },
       swap_active: !!swapOut,
       ego_recovered_at: swapOut ? (swapOut.ego_recovered_at ?? null) : null,
+      identity_self_recognition: scene.protagonist_identity_id ?? null,
     };
   }
 
@@ -838,9 +840,9 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ scene_characters: result.results });
       }
       if (method === 'POST') {
-        const body = await request.json() as {scene_id:string;character_id:string;role_in_scene?:string;notes?:string};
-        await env.DB.prepare("INSERT OR REPLACE INTO scene_characters (scene_id, character_id, role_in_scene, notes) VALUES (?, ?, ?, ?)")
-          .bind(body.scene_id, body.character_id, body.role_in_scene ?? 'sub', body.notes ?? null).run();
+        const body = await request.json() as {scene_id:string;character_id:string;role_in_scene?:string;is_pov?:boolean;notes?:string};
+        await env.DB.prepare("INSERT OR REPLACE INTO scene_characters (scene_id, character_id, role_in_scene, is_pov, notes) VALUES (?, ?, ?, ?, ?)")
+          .bind(body.scene_id, body.character_id, body.role_in_scene ?? 'present', body.is_pov ? 1 : 0, body.notes ?? null).run();
         return json({ ok: true });
       }
       if (method === 'DELETE') {
@@ -1041,6 +1043,20 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         `ALTER TABLE relationships_new RENAME TO relationships`,
         `ALTER TABLE consciousness_swaps ADD COLUMN ego_recovered_at TEXT NULL`,
         `ALTER TABLE consciousness_swaps ADD COLUMN source_body_id TEXT REFERENCES characters(id)`,
+        `CREATE TABLE IF NOT EXISTS scene_characters_new (
+          scene_id TEXT NOT NULL REFERENCES scenes(id),
+          character_id TEXT NOT NULL REFERENCES characters(id),
+          role_in_scene TEXT CHECK(role_in_scene IN ('active','present','mentioned')) DEFAULT 'present',
+          is_pov INTEGER NOT NULL DEFAULT 0,
+          notes TEXT,
+          PRIMARY KEY (scene_id, character_id)
+        )`,
+        `INSERT OR IGNORE INTO scene_characters_new (scene_id, character_id, role_in_scene, is_pov, notes)
+         SELECT scene_id, character_id,
+           CASE role_in_scene WHEN 'main' THEN 'active' WHEN 'sub' THEN 'present' ELSE role_in_scene END,
+           0, notes FROM scene_characters`,
+        `DROP TABLE IF EXISTS scene_characters`,
+        `ALTER TABLE scene_characters_new RENAME TO scene_characters`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

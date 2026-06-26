@@ -28,7 +28,7 @@ export const api = {
   },
   sceneCharacters: {
     list: (sceneId: string) => apiFetch<{scene_characters: SceneCharacter[]}>(`/api/scene_characters/${sceneId}`),
-    add: (data: {scene_id: string; character_id: string; role_in_scene: string; notes?: string}) =>
+    add: (data: {scene_id: string; character_id: string; role_in_scene: string; is_pov?: boolean; notes?: string}) =>
       apiFetch('/api/scene_characters', { method: 'POST', body: JSON.stringify(data) }),
     remove: (sceneId: string, characterId: string) =>
       apiFetch(`/api/scene_characters/${sceneId}/${characterId}`, { method: 'DELETE' }),
@@ -70,7 +70,8 @@ export interface WorldRule {
   id: string; category: string; rule: string; applies_from: string | null;
 }
 export interface SceneCharacter {
-  scene_id: string; character_id: string; role_in_scene: string;
+  scene_id: string; character_id: string;
+  role_in_scene: string; is_pov: number;
   notes: string | null; name: string; role: string;
 }
 export interface ConsciousnessSwap {

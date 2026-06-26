@@ -5,7 +5,7 @@ import Badge from '../components/Badge';
 import { genId } from '../utils';
 
 const roleInSceneLabels: Record<string, string> = {
-  main: 'メイン', sub: 'サブ', mentioned: '言及のみ',
+  active: '活躍', present: '同席', mentioned: '言及のみ',
 };
 
 // DB形式 "0001-01-01T12:00:00" をパース
@@ -104,7 +104,7 @@ export default function Scenes() {
   const [showAdd, setShowAdd] = useState(false);
   const [detailScene, setDetailScene] = useState<Scene | null>(null);
   const [sceneChars, setSceneChars] = useState<SceneCharacter[]>([]);
-  const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'sub', notes: '' });
+  const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'present', is_pov: false, notes: '' });
   const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
   const [editingScene, setEditingScene] = useState(false);
   const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
@@ -195,7 +195,7 @@ export default function Scenes() {
       await api.sceneCharacters.add({ scene_id: detailScene.id, ...addCharForm });
       const r = await api.sceneCharacters.list(detailScene.id);
       setSceneChars(r.scene_characters);
-      setAddCharForm({ character_id: '', role_in_scene: 'sub', notes: '' });
+      setAddCharForm({ character_id: '', role_in_scene: 'present', is_pov: false, notes: '' });
     } catch (e) { setError(String(e)); }
   };
 
@@ -406,6 +406,7 @@ export default function Scenes() {
                     <li key={sc.character_id} className="flex items-center gap-2 text-sm">
                       <Badge role={sc.role} />
                       <span className="font-medium">{sc.name}</span>
+                      {!!sc.is_pov && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">視点</span>}
                       <span className="text-xs text-gray-400">({roleInSceneLabels[sc.role_in_scene] ?? sc.role_in_scene})</span>
                       {sc.notes && <span className="text-xs text-gray-500">— {sc.notes}</span>}
                       <button
@@ -435,10 +436,14 @@ export default function Scenes() {
                   onChange={e => setAddCharForm({...addCharForm, role_in_scene: e.target.value})}
                   className="border rounded px-2 py-1 text-sm"
                 >
-                  <option value="main">メイン</option>
-                  <option value="sub">サブ</option>
+                  <option value="active">活躍</option>
+                  <option value="present">同席</option>
                   <option value="mentioned">言及のみ</option>
                 </select>
+                <label className="flex items-center gap-1 text-sm text-gray-600 whitespace-nowrap">
+                  <input type="checkbox" checked={addCharForm.is_pov} onChange={e => setAddCharForm({...addCharForm, is_pov: e.target.checked})} />
+                  視点
+                </label>
                 <button type="submit" className="px-3 py-1 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700">追加</button>
               </form>
             </div>
