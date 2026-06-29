@@ -18,6 +18,88 @@ interface JsonRpcResponse {
 
 const TOOLS = [
   {
+    name: "get_character",
+    description: "Get a character and their state at a given story time",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Character slug ID" },
+        scene_time: { type: "string", description: "ISO8601 story time (optional)" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "list_characters",
+    description: "List all characters (id, name, aliases, role)",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "list_scenes",
+    description: "全シーン一覧を取得する（id・タイトル・執筆順・物語時間・執筆済みフラグ）。シーンIDを調べるときに使う。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "get_scene_context",
+    description: "Get scene info, character states valid at story_time, and world rules",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "Scene ID" },
+      },
+      required: ["scene_id"],
+    },
+  },
+  {
+    name: "check_conflict",
+    description: "Check for conflicts in a description against character states and world rules",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: { type: "string", description: "Description to check for conflicts" },
+        scene_time: { type: "string", description: "ISO8601 story time" },
+      },
+      required: ["description", "scene_time"],
+    },
+  },
+  {
+    name: "get_disclosure_level",
+    description: "Get disclosure notes and relationship visibility for a scene",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "Scene ID" },
+      },
+      required: ["scene_id"],
+    },
+  },
+  {
+    name: "check_all_consistency",
+    description: "全データを横断して整合性・矛盾をチェックする。意識入れ替わりの時系列矛盾、シーンのprotagonist_identity_idとswapの整合性、孤立キャラ・孤立シーン、narrative_orderの重複・欠番を検出する。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "save_scene_body",
+    description: "シーンの本文を保存する。執筆した本文テキストをシーンIDを指定してDBに書き込む。is_writtenも同時にtrueにする。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+        body: { type: "string", description: "本文テキスト" },
+      },
+      required: ["scene_id", "body"],
+    },
+  },
+  {
     name: "create_scene",
     description: "新しいシーンをDBに登録する。",
     inputSchema: {
@@ -197,88 +279,6 @@ const TOOLS = [
         id: { type: "string", description: "ルールID" },
       },
       required: ["id"],
-    },
-  },
-  {
-    name: "get_character",
-    description: "Get a character and their state at a given story time",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Character slug ID" },
-        scene_time: { type: "string", description: "ISO8601 story time (optional)" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "list_characters",
-    description: "List all characters (id, name, aliases, role)",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "list_scenes",
-    description: "全シーン一覧を取得する（id・タイトル・執筆順・物語時間・執筆済みフラグ）。シーンIDを調べるときに使う。",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "get_scene_context",
-    description: "Get scene info, character states valid at story_time, and world rules",
-    inputSchema: {
-      type: "object",
-      properties: {
-        scene_id: { type: "string", description: "Scene ID" },
-      },
-      required: ["scene_id"],
-    },
-  },
-  {
-    name: "check_conflict",
-    description: "Check for conflicts in a description against character states and world rules",
-    inputSchema: {
-      type: "object",
-      properties: {
-        description: { type: "string", description: "Description to check for conflicts" },
-        scene_time: { type: "string", description: "ISO8601 story time" },
-      },
-      required: ["description", "scene_time"],
-    },
-  },
-  {
-    name: "get_disclosure_level",
-    description: "Get disclosure notes and relationship visibility for a scene",
-    inputSchema: {
-      type: "object",
-      properties: {
-        scene_id: { type: "string", description: "Scene ID" },
-      },
-      required: ["scene_id"],
-    },
-  },
-  {
-    name: "check_all_consistency",
-    description: "全データを横断して整合性・矛盾をチェックする。意識入れ替わりの時系列矛盾、シーンのprotagonist_identity_idとswapの整合性、孤立キャラ・孤立シーン、narrative_orderの重複・欠番を検出する。",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "save_scene_body",
-    description: "シーンの本文を保存する。執筆した本文テキストをシーンIDを指定してDBに書き込む。is_writtenも同時にtrueにする。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        scene_id: { type: "string", description: "シーンID" },
-        body: { type: "string", description: "本文テキスト" },
-      },
-      required: ["scene_id", "body"],
     },
   },
 ];
