@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.5.0";
+const VERSION = "0.5.1";
 
 const TOOLS = [
   {
@@ -971,6 +971,58 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             }
             break;
           }
+          // --- 後方互換エイリアス ---
+          // 旧ツール名（list_scenes / create_scene / save_scene_body 等、統合前の個別名）を
+          // 引き続き受け付ける。ツール一覧をキャッシュしている古いクライアントが旧名で呼んでも
+          // Unknown tool にならないようにするための保険。tools/list には出さない（12件制限を維持）。
+          case "list_characters":
+            toolResult = await listCharacters(env.DB);
+            break;
+          case "list_scenes":
+            toolResult = await listScenes(env.DB);
+            break;
+          case "create_scene":
+            toolResult = await createScene(env.DB, toolArgs as { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string });
+            break;
+          case "update_scene":
+            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null });
+            break;
+          case "delete_scene":
+            toolResult = await deleteScene(env.DB, toolArgs as { scene_id: string });
+            break;
+          case "save_scene_body":
+            toolResult = await saveSceneBody(env.DB, toolArgs as { scene_id: string; body: string });
+            break;
+          case "create_character":
+            toolResult = await createCharacter(env.DB, toolArgs as { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string });
+            break;
+          case "update_character":
+            toolResult = await updateCharacter(env.DB, toolArgs as { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null });
+            break;
+          case "delete_character":
+            toolResult = await deleteCharacter(env.DB, toolArgs as { id: string });
+            break;
+          case "add_character_state":
+            toolResult = await addCharacterState(env.DB, toolArgs as { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string });
+            break;
+          case "add_relationship":
+            toolResult = await addRelationship(env.DB, toolArgs as { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string });
+            break;
+          case "update_relationship":
+            toolResult = await updateRelationship(env.DB, toolArgs as { id: string; relation_type?: string; is_public?: boolean; notes?: string | null });
+            break;
+          case "delete_relationship":
+            toolResult = await deleteRelationship(env.DB, toolArgs as { id: string });
+            break;
+          case "add_world_rule":
+            toolResult = await addWorldRule(env.DB, toolArgs as { id: string; category: string; rule: string; applies_from?: string });
+            break;
+          case "update_world_rule":
+            toolResult = await updateWorldRule(env.DB, toolArgs as { id: string; category?: string; rule?: string; applies_from?: string | null });
+            break;
+          case "delete_world_rule":
+            toolResult = await deleteWorldRule(env.DB, toolArgs as { id: string });
+            break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
         }
