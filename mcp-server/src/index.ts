@@ -18,188 +18,6 @@ interface JsonRpcResponse {
 
 const TOOLS = [
   {
-    name: "create_scene",
-    description: "新しいシーンをDBに登録する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "シーンID（英数字・ハイフン）" },
-        title: { type: "string", description: "タイトル" },
-        story_time: { type: "string", description: "物語内時刻（ISO8601）" },
-        narrative_order: { type: "number", description: "執筆順（話数）" },
-        location: { type: "string", description: "場所" },
-        disclosure_notes: { type: "string", description: "開示メモ" },
-      },
-      required: ["id", "title"],
-    },
-  },
-  {
-    name: "delete_scene",
-    description: "シーンをDBから削除する。scene_charactersも同時に削除される。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        scene_id: { type: "string", description: "シーンID" },
-      },
-      required: ["scene_id"],
-    },
-  },
-  {
-    name: "update_scene",
-    description: "シーンのメタ情報を更新する。title/location/disclosure_notesのほか、story_time・narrative_order（執筆順）・protagonist_identity_id（視点キャラ）も変更できる。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        scene_id: { type: "string", description: "シーンID" },
-        title: { type: "string", description: "タイトル" },
-        story_time: { type: "string", description: "物語内時刻（ISO8601）。nullを渡すと削除" },
-        narrative_order: { type: "number", description: "執筆順（話数）。nullを渡すとクリア" },
-        location: { type: "string", description: "場所" },
-        disclosure_notes: { type: "string", description: "開示メモ" },
-        protagonist_identity_id: { type: "string", description: "視点キャラのID（誰の意識が語り手か）。nullを渡すとクリア" },
-      },
-      required: ["scene_id"],
-    },
-  },
-  {
-    name: "create_character",
-    description: "新しいキャラクターをDBに登録する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "キャラクターID（英数字・ハイフン）" },
-        name: { type: "string", description: "名前" },
-        aliases: { type: "string", description: "別名・呼び名（複数あればカンマ区切り）" },
-        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
-        description: { type: "string", description: "説明・プロフィール" },
-        secret: { type: "string", description: "秘密・読者非開示情報" },
-      },
-      required: ["id", "name"],
-    },
-  },
-  {
-    name: "add_character_state",
-    description: "キャラクターの状態変化（外見・生死・メモ）をシーン時点で記録する。意識入れ替わりや変身・変装などの変化を記録するのに使う。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        character_id: { type: "string", description: "キャラクターID" },
-        scene_id: { type: "string", description: "この状態になるシーンID（valid_fromに使用）" },
-        appearance: { type: "string", description: "外見の説明" },
-        status: { type: "string", description: "状態（例: 生存、死亡、負傷）" },
-        notes: { type: "string", description: "メモ" },
-      },
-      required: ["character_id", "scene_id"],
-    },
-  },
-  {
-    name: "update_character",
-    description: "既存キャラクターの情報（名前・別名・役割・説明・秘密）を更新する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "キャラクターID" },
-        name: { type: "string", description: "名前" },
-        aliases: { type: "string", description: "別名（nullでクリア）" },
-        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
-        description: { type: "string", description: "説明・プロフィール（nullでクリア）" },
-        secret: { type: "string", description: "秘密（nullでクリア）" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "delete_character",
-    description: "キャラクターをDBから削除する。consciousness_swapsに参照がある場合はエラー。scene_characters・character_states・relationshipsは同時削除される。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "キャラクターID" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "add_relationship",
-    description: "キャラクター間の関係性を登録する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        character_id_a: { type: "string", description: "キャラクターAのID" },
-        character_id_b: { type: "string", description: "キャラクターBのID" },
-        relation_type: { type: "string", description: "関係の種類（例: 幼馴染、師弟、恋人、敵対）" },
-        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
-        from_scene_id: { type: "string", description: "この関係が始まるシーンID（省略可）" },
-        notes: { type: "string", description: "メモ" },
-      },
-      required: ["character_id_a", "character_id_b", "relation_type"],
-    },
-  },
-  {
-    name: "update_relationship",
-    description: "既存の関係性を更新する（relation_type・is_public・notesを変更できる）。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "関係性ID" },
-        relation_type: { type: "string", description: "関係の種類" },
-        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
-        notes: { type: "string", description: "メモ（nullでクリア）" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "delete_relationship",
-    description: "関係性をDBから削除する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "関係性ID" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "add_world_rule",
-    description: "世界設定ルールを新規登録する。能力名・制約・設定用語などをカテゴリ別に記録する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "ルールID（英数字・ハイフン）" },
-        category: { type: "string", description: "カテゴリ（例: 能力, 制約, 世界観, 用語）" },
-        rule: { type: "string", description: "ルール本文" },
-        applies_from: { type: "string", description: "このルールが適用される物語開始時刻（ISO8601、省略可）" },
-      },
-      required: ["id", "category", "rule"],
-    },
-  },
-  {
-    name: "update_world_rule",
-    description: "既存の世界設定ルールを更新する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "ルールID" },
-        category: { type: "string", description: "カテゴリ" },
-        rule: { type: "string", description: "ルール本文" },
-        applies_from: { type: "string", description: "適用開始時刻（ISO8601）。nullでクリア" },
-      },
-      required: ["id"],
-    },
-  },
-  {
-    name: "delete_world_rule",
-    description: "世界設定ルールをDBから削除する。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "ルールID" },
-      },
-      required: ["id"],
-    },
-  },
-  {
     name: "get_character",
     description: "Get a character and their state at a given story time",
     inputSchema: {
@@ -270,15 +88,78 @@ const TOOLS = [
     },
   },
   {
-    name: "save_scene_body",
-    description: "シーンの本文を保存する。執筆した本文テキストをシーンIDを指定してDBに書き込む。is_writtenも同時にtrueにする。",
+    name: "manage_scene",
+    description: "シーンの作成・更新・削除・本文保存をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・is_writtenをtrueにする）。",
     inputSchema: {
       type: "object",
       properties: {
-        scene_id: { type: "string", description: "シーンID" },
-        body: { type: "string", description: "本文テキスト" },
+        action: { type: "string", description: "操作: create / update / delete / save_body" },
+        id: { type: "string", description: "シーンID（action=create時）" },
+        scene_id: { type: "string", description: "シーンID（update/delete/save_body時）" },
+        title: { type: "string", description: "タイトル" },
+        story_time: { type: "string", description: "物語内時刻（ISO8601）。updateでnullを渡すと削除" },
+        narrative_order: { type: "number", description: "執筆順（話数）。updateでnullを渡すとクリア" },
+        location: { type: "string", description: "場所" },
+        disclosure_notes: { type: "string", description: "開示メモ" },
+        protagonist_identity_id: { type: "string", description: "視点キャラのID（update時、誰の意識が語り手か）。nullでクリア" },
+        body: { type: "string", description: "本文テキスト（save_body時）" },
       },
-      required: ["scene_id", "body"],
+      required: ["action"],
+    },
+  },
+  {
+    name: "manage_character",
+    description: "キャラクターの作成・更新・削除・状態変化記録をまとめて行う。actionで操作を指定する。create=新規作成（id,name必須）、update=情報更新（id必須）、delete=削除（id必須・consciousness_swapsに参照があるとエラー）、add_state=状態変化（外見・生死・メモ）をシーン時点で記録（character_id,scene_id必須・意識入れ替わりや変身の記録に使う）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "操作: create / update / delete / add_state" },
+        id: { type: "string", description: "キャラクターID（create/update/delete時）" },
+        name: { type: "string", description: "名前" },
+        aliases: { type: "string", description: "別名・呼び名（カンマ区切り）。updateでnullクリア" },
+        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
+        description: { type: "string", description: "説明・プロフィール。updateでnullクリア" },
+        secret: { type: "string", description: "秘密・読者非開示情報。updateでnullクリア" },
+        character_id: { type: "string", description: "キャラクターID（add_state時）" },
+        scene_id: { type: "string", description: "状態が始まるシーンID（add_state時・valid_fromに使用）" },
+        appearance: { type: "string", description: "外見の説明（add_state時）" },
+        status: { type: "string", description: "状態（例: 生存、死亡、負傷）（add_state時）" },
+        notes: { type: "string", description: "メモ（add_state時）" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "manage_relationship",
+    description: "キャラクター間の関係性の作成・更新・削除をまとめて行う。actionで操作を指定する。create=新規登録（character_id_a,character_id_b,relation_type必須）、update=更新（id必須）、delete=削除（id必須）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "操作: create / update / delete" },
+        id: { type: "string", description: "関係性ID（update/delete時）" },
+        character_id_a: { type: "string", description: "キャラクターAのID（create時）" },
+        character_id_b: { type: "string", description: "キャラクターBのID（create時）" },
+        relation_type: { type: "string", description: "関係の種類（例: 幼馴染、師弟、恋人、敵対）" },
+        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
+        from_scene_id: { type: "string", description: "この関係が始まるシーンID（create時・省略可）" },
+        notes: { type: "string", description: "メモ。updateでnullクリア" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "manage_world_rule",
+    description: "世界設定ルールの作成・更新・削除をまとめて行う。actionで操作を指定する。create=新規登録（id,category,rule必須）、update=更新（id必須）、delete=削除（id必須）。能力名・制約・設定用語などをカテゴリ別に管理する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "操作: create / update / delete" },
+        id: { type: "string", description: "ルールID（英数字・ハイフン）" },
+        category: { type: "string", description: "カテゴリ（例: 能力, 制約, 世界観, 用語）" },
+        rule: { type: "string", description: "ルール本文" },
+        applies_from: { type: "string", description: "適用開始時刻（ISO8601）。updateでnullクリア" },
+      },
+      required: ["action"],
     },
   },
 ];
@@ -918,7 +799,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
           result: {
             protocolVersion: "2025-03-26",
             capabilities: { tools: {} },
-            serverInfo: { name: "novelsync-mcp", version: "0.3.0" },
+            serverInfo: { name: "novelsync-mcp", version: "0.4.0" },
           },
         };
       case "notifications/initialized":
@@ -953,48 +834,85 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
           case "check_all_consistency":
             toolResult = await checkAllConsistency(env.DB);
             break;
-          case "create_scene":
-            toolResult = await createScene(env.DB, toolArgs as { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string });
+          case "manage_scene": {
+            const a = toolArgs as Record<string, unknown>;
+            const action = a.action as string;
+            const sceneId = (a.scene_id ?? a.id) as string;
+            switch (action) {
+              case "create":
+                toolResult = await createScene(env.DB, { id: (a.id ?? a.scene_id) as string, title: a.title as string, story_time: a.story_time as string | undefined, narrative_order: a.narrative_order as number | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined });
+                break;
+              case "update":
+                toolResult = await updateScene(env.DB, { scene_id: sceneId, title: a.title as string | undefined, story_time: a.story_time as string | null | undefined, narrative_order: a.narrative_order as number | null | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined, protagonist_identity_id: a.protagonist_identity_id as string | null | undefined });
+                break;
+              case "delete":
+                toolResult = await deleteScene(env.DB, { scene_id: sceneId });
+                break;
+              case "save_body":
+                toolResult = await saveSceneBody(env.DB, { scene_id: sceneId, body: a.body as string });
+                break;
+              default:
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body)` } };
+            }
             break;
-          case "delete_scene":
-            toolResult = await deleteScene(env.DB, toolArgs as { scene_id: string });
+          }
+          case "manage_character": {
+            const a = toolArgs as Record<string, unknown>;
+            const action = a.action as string;
+            switch (action) {
+              case "create":
+                toolResult = await createCharacter(env.DB, { id: a.id as string, name: a.name as string, aliases: a.aliases as string | undefined, role: a.role as string | undefined, description: a.description as string | undefined, secret: a.secret as string | undefined });
+                break;
+              case "update":
+                toolResult = await updateCharacter(env.DB, { id: a.id as string, name: a.name as string | undefined, aliases: a.aliases as string | null | undefined, role: a.role as string | undefined, description: a.description as string | null | undefined, secret: a.secret as string | null | undefined });
+                break;
+              case "delete":
+                toolResult = await deleteCharacter(env.DB, { id: a.id as string });
+                break;
+              case "add_state":
+                toolResult = await addCharacterState(env.DB, { character_id: (a.character_id ?? a.id) as string, scene_id: a.scene_id as string, appearance: a.appearance as string | undefined, status: a.status as string | undefined, notes: a.notes as string | undefined });
+                break;
+              default:
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_character: unknown action '${action}' (create/update/delete/add_state)` } };
+            }
             break;
-          case "save_scene_body":
-            toolResult = await saveSceneBody(env.DB, toolArgs as { scene_id: string; body: string });
+          }
+          case "manage_relationship": {
+            const a = toolArgs as Record<string, unknown>;
+            const action = a.action as string;
+            switch (action) {
+              case "create":
+                toolResult = await addRelationship(env.DB, { character_id_a: a.character_id_a as string, character_id_b: a.character_id_b as string, relation_type: a.relation_type as string, is_public: a.is_public as boolean | undefined, from_scene_id: a.from_scene_id as string | undefined, notes: a.notes as string | undefined });
+                break;
+              case "update":
+                toolResult = await updateRelationship(env.DB, { id: a.id as string, relation_type: a.relation_type as string | undefined, is_public: a.is_public as boolean | undefined, notes: a.notes as string | null | undefined });
+                break;
+              case "delete":
+                toolResult = await deleteRelationship(env.DB, { id: a.id as string });
+                break;
+              default:
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_relationship: unknown action '${action}' (create/update/delete)` } };
+            }
             break;
-          case "update_scene":
-            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null });
+          }
+          case "manage_world_rule": {
+            const a = toolArgs as Record<string, unknown>;
+            const action = a.action as string;
+            switch (action) {
+              case "create":
+                toolResult = await addWorldRule(env.DB, { id: a.id as string, category: a.category as string, rule: a.rule as string, applies_from: a.applies_from as string | undefined });
+                break;
+              case "update":
+                toolResult = await updateWorldRule(env.DB, { id: a.id as string, category: a.category as string | undefined, rule: a.rule as string | undefined, applies_from: a.applies_from as string | null | undefined });
+                break;
+              case "delete":
+                toolResult = await deleteWorldRule(env.DB, { id: a.id as string });
+                break;
+              default:
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_world_rule: unknown action '${action}' (create/update/delete)` } };
+            }
             break;
-          case "create_character":
-            toolResult = await createCharacter(env.DB, toolArgs as { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string });
-            break;
-          case "update_character":
-            toolResult = await updateCharacter(env.DB, toolArgs as { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null });
-            break;
-          case "delete_character":
-            toolResult = await deleteCharacter(env.DB, toolArgs as { id: string });
-            break;
-          case "add_character_state":
-            toolResult = await addCharacterState(env.DB, toolArgs as { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string });
-            break;
-          case "add_relationship":
-            toolResult = await addRelationship(env.DB, toolArgs as { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string });
-            break;
-          case "update_relationship":
-            toolResult = await updateRelationship(env.DB, toolArgs as { id: string; relation_type?: string; is_public?: boolean; notes?: string | null });
-            break;
-          case "delete_relationship":
-            toolResult = await deleteRelationship(env.DB, toolArgs as { id: string });
-            break;
-          case "add_world_rule":
-            toolResult = await addWorldRule(env.DB, toolArgs as { id: string; category: string; rule: string; applies_from?: string });
-            break;
-          case "update_world_rule":
-            toolResult = await updateWorldRule(env.DB, toolArgs as { id: string; category?: string; rule?: string; applies_from?: string | null });
-            break;
-          case "delete_world_rule":
-            toolResult = await deleteWorldRule(env.DB, toolArgs as { id: string });
-            break;
+          }
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
         }
@@ -1423,7 +1341,7 @@ export default {
 
     // Health check
     if (request.method === "GET") {
-      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.3.0", status: "ok", tool_count: TOOLS.length }), {
+      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.4.0", status: "ok", tool_count: TOOLS.length }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
