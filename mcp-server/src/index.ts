@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.5.1";
+const VERSION = "0.6.0";
 
 const TOOLS = [
   {
@@ -111,11 +111,11 @@ const TOOLS = [
   },
   {
     name: "manage_character",
-    description: "キャラクターの作成・更新・削除・状態変化記録をまとめて行う。actionで操作を指定する。create=新規作成（id,name必須）、update=情報更新（id必須）、delete=削除（id必須・consciousness_swapsに参照があるとエラー）、add_state=状態変化（外見・生死・メモ）をシーン時点で記録（character_id,scene_id必須・意識入れ替わりや変身の記録に使う）。",
+    description: "キャラクターと意識入れ替わり（consciousness_swaps）の管理をまとめて行う。actionで操作を指定する。create=新規作成（id,name必須）、update=情報更新（id必須）、delete=削除（id必須・swapに参照があるとエラー）、add_state=状態変化（外見・生死・メモ）をシーン時点で記録（character_id,scene_id必須・変身の記録に使う）、add_swap=意識入れ替わりイベント作成（swap_id,from_character_id,to_character_id,swapped_at必須）、update_swap=入れ替わり更新（swap_id必須）、delete_swap=入れ替わり削除（swap_id必須）。",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / add_state" },
+        action: { type: "string", description: "操作: create / update / delete / add_state / add_swap / update_swap / delete_swap" },
         id: { type: "string", description: "キャラクターID（create/update/delete時）" },
         name: { type: "string", description: "名前" },
         aliases: { type: "string", description: "別名・呼び名（カンマ区切り）。updateでnullクリア" },
@@ -126,7 +126,15 @@ const TOOLS = [
         scene_id: { type: "string", description: "状態が始まるシーンID（add_state時・valid_fromに使用）" },
         appearance: { type: "string", description: "外見の説明（add_state時）" },
         status: { type: "string", description: "状態（例: 生存、死亡、負傷）（add_state時）" },
-        notes: { type: "string", description: "メモ（add_state時）" },
+        notes: { type: "string", description: "メモ（add_state / swap系で使用）。swap更新でnullクリア" },
+        swap_id: { type: "string", description: "入れ替わりID（add_swap/update_swap/delete_swap時）" },
+        from_character_id: { type: "string", description: "入れ替わる意識（自我）の元キャラID（add_swap/update_swap時）" },
+        to_character_id: { type: "string", description: "意識が入る先の身体キャラID（add_swap/update_swap時）" },
+        source_body_id: { type: "string", description: "自我が元々入っていた身体キャラID（swap系・任意）。updateでnullクリア" },
+        swapped_at: { type: "string", description: "入れ替わり発生時刻（ISO8601）（add_swap必須/update_swap任意）" },
+        resolved_at: { type: "string", description: "入れ替わりが解消した時刻（ISO8601・任意）。updateでnullクリア" },
+        ego_recovered_at: { type: "string", description: "自我が元に戻った時刻（ISO8601・任意）。updateでnullクリア" },
+        trigger_event: { type: "string", description: "入れ替わりのきっかけ（任意）。updateでnullクリア" },
       },
       required: ["action"],
     },
@@ -282,7 +290,10 @@ function getHelp(): unknown {
         create: "新規キャラ作成。id・name 必須",
         update: "情報更新。id 必須（aliases/description/secret は null でクリア）",
         delete: "キャラ削除。id 必須（consciousness_swaps に参照があるとエラー）",
-        add_state: "状態変化（外見・生死・メモ）をシーン時点で記録。character_id・scene_id 必須。変身/意識入れ替わり/負傷の記録に使う",
+        add_state: "状態変化（外見・生死・メモ）をシーン時点で記録。character_id・scene_id 必須。変身/負傷の記録に使う",
+        add_swap: "意識入れ替わりイベント作成。swap_id・from_character_id（自我）・to_character_id（入る身体）・swapped_at 必須",
+        update_swap: "入れ替わり更新。swap_id 必須（resolved_at/ego_recovered_at/trigger_event/notes は null でクリア）",
+        delete_swap: "入れ替わり削除。swap_id 必須",
       },
       manage_relationship: {
         create: "関係性登録。character_id_a・character_id_b・relation_type 必須",
@@ -301,7 +312,7 @@ function getHelp(): unknown {
       "シーンの追加・削除・並べ替え・時刻変更はすべて manage_scene（action=create/delete/update）で可能。執筆順や物語時間も update で変更できる。",
       "本文の書き込みは manage_scene{action:'save_body', scene_id, body}。",
       "大きな再構成のあとは必ず check_all_consistency で時系列・参照整合・順序を確認する。",
-      "意識入れ替わり（consciousness_swaps）の作成・編集は現状 Web UI / REST API（/api/consciousness_swaps）でのみ可能。MCP ツールには未対応。",
+      "意識入れ替わり（consciousness_swaps）は manage_character の add_swap/update_swap/delete_swap で管理できる（from=自我、to=入る身体）。シーンの視点は manage_scene{action:'update', protagonist_identity_id}で設定。Web UI / REST API（/api/consciousness_swaps）でも編集可。",
     ],
   };
 }
@@ -763,6 +774,60 @@ async function updateCharacter(db: D1Database, args: { id: string; name?: string
   return { ok: true, id: args.id };
 }
 
+async function createSwap(db: D1Database, args: { id: string; from_character_id: string; source_body_id?: string; to_character_id: string; swapped_at: string; resolved_at?: string; ego_recovered_at?: string; trigger_event?: string; notes?: string }): Promise<unknown> {
+  if (!args.id || !args.from_character_id || !args.to_character_id || !args.swapped_at) {
+    return { error: "id, from_character_id, to_character_id, swapped_at は必須です" };
+  }
+  const from = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.from_character_id).first();
+  if (!from) return { error: `Character (from) '${args.from_character_id}' not found` };
+  const to = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.to_character_id).first();
+  if (!to) return { error: `Character (to) '${args.to_character_id}' not found` };
+  await db.prepare(
+    `INSERT INTO consciousness_swaps (id, from_character_id, source_body_id, to_character_id, swapped_at, resolved_at, ego_recovered_at, trigger_event, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    args.id, args.from_character_id, args.source_body_id ?? null, args.to_character_id,
+    args.swapped_at, args.resolved_at ?? null, args.ego_recovered_at ?? null,
+    args.trigger_event ?? null, args.notes ?? null
+  ).run();
+  return { ok: true, id: args.id };
+}
+
+async function updateSwap(db: D1Database, args: { id: string; from_character_id?: string; source_body_id?: string | null; to_character_id?: string; swapped_at?: string; resolved_at?: string | null; ego_recovered_at?: string | null; trigger_event?: string | null; notes?: string | null }): Promise<unknown> {
+  if (!args.id) return { error: "id は必須です" };
+  const exists = await db.prepare("SELECT id FROM consciousness_swaps WHERE id=?").bind(args.id).first();
+  if (!exists) return { error: `Swap '${args.id}' not found` };
+  await db.prepare(
+    `UPDATE consciousness_swaps SET
+      from_character_id=COALESCE(?,from_character_id),
+      source_body_id=CASE WHEN ?=1 THEN ? ELSE source_body_id END,
+      to_character_id=COALESCE(?,to_character_id),
+      swapped_at=COALESCE(?,swapped_at),
+      resolved_at=CASE WHEN ?=1 THEN ? ELSE resolved_at END,
+      ego_recovered_at=CASE WHEN ?=1 THEN ? ELSE ego_recovered_at END,
+      trigger_event=CASE WHEN ?=1 THEN ? ELSE trigger_event END,
+      notes=CASE WHEN ?=1 THEN ? ELSE notes END
+     WHERE id=?`
+  ).bind(
+    args.from_character_id ?? null,
+    'source_body_id' in args ? 1 : 0, args.source_body_id ?? null,
+    args.to_character_id ?? null,
+    args.swapped_at ?? null,
+    'resolved_at' in args ? 1 : 0, args.resolved_at ?? null,
+    'ego_recovered_at' in args ? 1 : 0, args.ego_recovered_at ?? null,
+    'trigger_event' in args ? 1 : 0, args.trigger_event ?? null,
+    'notes' in args ? 1 : 0, args.notes ?? null,
+    args.id
+  ).run();
+  return { ok: true, id: args.id };
+}
+
+async function deleteSwap(db: D1Database, args: { id: string }): Promise<unknown> {
+  if (!args.id) return { error: "id は必須です" };
+  await db.prepare("DELETE FROM consciousness_swaps WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
+}
+
 async function deleteCharacter(db: D1Database, args: { id: string }): Promise<unknown> {
   const char = await db.prepare("SELECT id, name FROM characters WHERE id=?").bind(args.id).first() as { id: string; name: string } | null;
   if (!char) return { error: `Character '${args.id}' not found` };
@@ -930,8 +995,17 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "add_state":
                 toolResult = await addCharacterState(env.DB, { character_id: (a.character_id ?? a.id) as string, scene_id: a.scene_id as string, appearance: a.appearance as string | undefined, status: a.status as string | undefined, notes: a.notes as string | undefined });
                 break;
+              case "add_swap":
+                toolResult = await createSwap(env.DB, { id: (a.swap_id ?? a.id) as string, from_character_id: a.from_character_id as string, source_body_id: a.source_body_id as string | undefined, to_character_id: a.to_character_id as string, swapped_at: a.swapped_at as string, resolved_at: a.resolved_at as string | undefined, ego_recovered_at: a.ego_recovered_at as string | undefined, trigger_event: a.trigger_event as string | undefined, notes: a.notes as string | undefined });
+                break;
+              case "update_swap":
+                toolResult = await updateSwap(env.DB, { ...a, id: (a.swap_id ?? a.id) } as unknown as Parameters<typeof updateSwap>[1]);
+                break;
+              case "delete_swap":
+                toolResult = await deleteSwap(env.DB, { id: (a.swap_id ?? a.id) as string });
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_character: unknown action '${action}' (create/update/delete/add_state)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_character: unknown action '${action}' (create/update/delete/add_state/add_swap/update_swap/delete_swap)` } };
             }
             break;
           }
