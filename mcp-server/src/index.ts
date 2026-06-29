@@ -918,7 +918,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
           result: {
             protocolVersion: "2025-03-26",
             capabilities: { tools: {} },
-            serverInfo: { name: "novelsync-mcp", version: "0.1.0" },
+            serverInfo: { name: "novelsync-mcp", version: "0.3.0" },
           },
         };
       case "notifications/initialized":
@@ -1423,7 +1423,7 @@ export default {
 
     // Health check
     if (request.method === "GET") {
-      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.1.0", status: "ok" }), {
+      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.3.0", status: "ok", tool_count: TOOLS.length }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
