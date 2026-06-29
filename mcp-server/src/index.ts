@@ -242,6 +242,45 @@ const TOOLS = [
       required: ["id"],
     },
   },
+  {
+    name: "add_world_rule",
+    description: "世界設定ルールを新規登録する。能力名・制約・設定用語などをカテゴリ別に記録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "ルールID（英数字・ハイフン）" },
+        category: { type: "string", description: "カテゴリ（例: 能力, 制約, 世界観, 用語）" },
+        rule: { type: "string", description: "ルール本文" },
+        applies_from: { type: "string", description: "このルールが適用される物語開始時刻（ISO8601、省略可）" },
+      },
+      required: ["id", "category", "rule"],
+    },
+  },
+  {
+    name: "update_world_rule",
+    description: "既存の世界設定ルールを更新する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "ルールID" },
+        category: { type: "string", description: "カテゴリ" },
+        rule: { type: "string", description: "ルール本文" },
+        applies_from: { type: "string", description: "適用開始時刻（ISO8601）。nullでクリア" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_world_rule",
+    description: "世界設定ルールをDBから削除する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "ルールID" },
+      },
+      required: ["id"],
+    },
+  },
 ];
 
 async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
@@ -822,6 +861,39 @@ async function deleteRelationship(db: D1Database, args: { id: string }): Promise
   return { ok: true, id: args.id };
 }
 
+async function addWorldRule(db: D1Database, args: { id: string; category: string; rule: string; applies_from?: string }): Promise<unknown> {
+  const exists = await db.prepare("SELECT id FROM world_rules WHERE id=?").bind(args.id).first();
+  if (exists) return { error: `World rule '${args.id}' already exists` };
+  await db.prepare("INSERT INTO world_rules (id, category, rule, applies_from) VALUES (?, ?, ?, ?)")
+    .bind(args.id, args.category, args.rule, args.applies_from ?? null).run();
+  return { ok: true, id: args.id, category: args.category };
+}
+
+async function updateWorldRule(db: D1Database, args: { id: string; category?: string; rule?: string; applies_from?: string | null }): Promise<unknown> {
+  const existing = await db.prepare("SELECT id FROM world_rules WHERE id=?").bind(args.id).first();
+  if (!existing) return { error: `World rule '${args.id}' not found` };
+  await db.prepare(
+    `UPDATE world_rules SET
+      category=COALESCE(?,category),
+      rule=COALESCE(?,rule),
+      applies_from=CASE WHEN ?=1 THEN ? ELSE applies_from END
+     WHERE id=?`
+  ).bind(
+    args.category ?? null,
+    args.rule ?? null,
+    'applies_from' in args ? 1 : 0, args.applies_from ?? null,
+    args.id
+  ).run();
+  return { ok: true, id: args.id };
+}
+
+async function deleteWorldRule(db: D1Database, args: { id: string }): Promise<unknown> {
+  const existing = await db.prepare("SELECT id FROM world_rules WHERE id=?").bind(args.id).first();
+  if (!existing) return { error: `World rule '${args.id}' not found` };
+  await db.prepare("DELETE FROM world_rules WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
+}
+
 async function addRelationship(db: D1Database, args: { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string }): Promise<unknown> {
   let validFrom: string | null = null;
   if (args.from_scene_id) {
@@ -913,6 +985,15 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             break;
           case "delete_relationship":
             toolResult = await deleteRelationship(env.DB, toolArgs as { id: string });
+            break;
+          case "add_world_rule":
+            toolResult = await addWorldRule(env.DB, toolArgs as { id: string; category: string; rule: string; applies_from?: string });
+            break;
+          case "update_world_rule":
+            toolResult = await updateWorldRule(env.DB, toolArgs as { id: string; category?: string; rule?: string; applies_from?: string | null });
+            break;
+          case "delete_world_rule":
+            toolResult = await deleteWorldRule(env.DB, toolArgs as { id: string });
             break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
@@ -1012,6 +1093,18 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         const body = await request.json() as {id:string;category:string;rule:string;applies_from?:string};
         await env.DB.prepare("INSERT INTO world_rules (id, category, rule, applies_from) VALUES (?, ?, ?, ?)")
           .bind(body.id, body.category, body.rule, body.applies_from ?? null).run();
+        return json({ ok: true });
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as { category?: string; rule?: string; applies_from?: string | null };
+        await env.DB.prepare(
+          `UPDATE world_rules SET category=COALESCE(?,category), rule=COALESCE(?,rule), applies_from=CASE WHEN ?=1 THEN ? ELSE applies_from END WHERE id=?`
+        ).bind(
+          body.category ?? null,
+          body.rule ?? null,
+          'applies_from' in body ? 1 : 0, body.applies_from ?? null,
+          id
+        ).run();
         return json({ ok: true });
       }
       if (method === 'DELETE' && id) {
