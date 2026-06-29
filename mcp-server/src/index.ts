@@ -100,15 +100,45 @@ const TOOLS = [
     },
   },
   {
+    name: "create_scene",
+    description: "新しいシーンをDBに登録する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "シーンID（英数字・ハイフン）" },
+        title: { type: "string", description: "タイトル" },
+        story_time: { type: "string", description: "物語内時刻（ISO8601）" },
+        narrative_order: { type: "number", description: "執筆順（話数）" },
+        location: { type: "string", description: "場所" },
+        disclosure_notes: { type: "string", description: "開示メモ" },
+      },
+      required: ["id", "title"],
+    },
+  },
+  {
+    name: "delete_scene",
+    description: "シーンをDBから削除する。scene_charactersも同時に削除される。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scene_id: { type: "string", description: "シーンID" },
+      },
+      required: ["scene_id"],
+    },
+  },
+  {
     name: "update_scene",
-    description: "シーンのメタ情報（タイトル・場所・開示メモ等）を更新する。",
+    description: "シーンのメタ情報を更新する。title/location/disclosure_notesのほか、story_time・narrative_order（執筆順）・protagonist_identity_id（視点キャラ）も変更できる。",
     inputSchema: {
       type: "object",
       properties: {
         scene_id: { type: "string", description: "シーンID" },
         title: { type: "string", description: "タイトル" },
+        story_time: { type: "string", description: "物語内時刻（ISO8601）。nullを渡すと削除" },
+        narrative_order: { type: "number", description: "執筆順（話数）。nullを渡すとクリア" },
         location: { type: "string", description: "場所" },
-        disclosure_notes: { type: "string", description: "開示メモ（読者への開示状況メモ）" },
+        disclosure_notes: { type: "string", description: "開示メモ" },
+        protagonist_identity_id: { type: "string", description: "視点キャラのID（誰の意識が語り手か）。nullを渡すとクリア" },
       },
       required: ["scene_id"],
     },
@@ -145,6 +175,33 @@ const TOOLS = [
     },
   },
   {
+    name: "update_character",
+    description: "既存キャラクターの情報（名前・別名・役割・説明・秘密）を更新する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "キャラクターID" },
+        name: { type: "string", description: "名前" },
+        aliases: { type: "string", description: "別名（nullでクリア）" },
+        role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
+        description: { type: "string", description: "説明・プロフィール（nullでクリア）" },
+        secret: { type: "string", description: "秘密（nullでクリア）" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_character",
+    description: "キャラクターをDBから削除する。consciousness_swapsに参照がある場合はエラー。scene_characters・character_states・relationshipsは同時削除される。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "キャラクターID" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "add_relationship",
     description: "キャラクター間の関係性を登録する。",
     inputSchema: {
@@ -158,6 +215,31 @@ const TOOLS = [
         notes: { type: "string", description: "メモ" },
       },
       required: ["character_id_a", "character_id_b", "relation_type"],
+    },
+  },
+  {
+    name: "update_relationship",
+    description: "既存の関係性を更新する（relation_type・is_public・notesを変更できる）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "関係性ID" },
+        relation_type: { type: "string", description: "関係の種類" },
+        is_public: { type: "boolean", description: "読者に開示済みかどうか" },
+        notes: { type: "string", description: "メモ（nullでクリア）" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_relationship",
+    description: "関係性をDBから削除する。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "関係性ID" },
+      },
+      required: ["id"],
     },
   },
 ];
@@ -611,6 +693,22 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   };
 }
 
+async function createScene(db: D1Database, args: { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string }): Promise<unknown> {
+  const exists = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.id).first();
+  if (exists) return { error: `Scene '${args.id}' already exists` };
+  await db.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(args.id, args.title, args.story_time ?? null, args.narrative_order ?? null, args.location ?? null, args.disclosure_notes ?? null).run();
+  return { ok: true, id: args.id, title: args.title };
+}
+
+async function deleteScene(db: D1Database, args: { scene_id: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first() as { id: string; title: string } | null;
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await db.prepare("DELETE FROM scene_characters WHERE scene_id=?").bind(args.scene_id).run();
+  await db.prepare("DELETE FROM scenes WHERE id=?").bind(args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id, title: scene.title };
+}
+
 async function saveSceneBody(db: D1Database, args: { scene_id: string; body: string }): Promise<unknown> {
   const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
@@ -618,12 +716,30 @@ async function saveSceneBody(db: D1Database, args: { scene_id: string; body: str
   return { ok: true, scene_id: args.scene_id, title: scene.title, characters: args.body.length };
 }
 
-async function updateScene(db: D1Database, args: { scene_id: string; title?: string; location?: string; disclosure_notes?: string }): Promise<unknown> {
+async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null }): Promise<unknown> {
   const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  const hasStoryTime = 'story_time' in args;
+  const hasOrder = 'narrative_order' in args;
+  const hasIdentity = 'protagonist_identity_id' in args;
   await db.prepare(
-    "UPDATE scenes SET title=COALESCE(?,title), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes) WHERE id=?"
-  ).bind(args.title ?? null, args.location ?? null, args.disclosure_notes ?? null, args.scene_id).run();
+    `UPDATE scenes SET
+      title=COALESCE(?,title),
+      story_time=CASE WHEN ?=1 THEN ? ELSE story_time END,
+      narrative_order=CASE WHEN ?=1 THEN ? ELSE narrative_order END,
+      location=COALESCE(?,location),
+      disclosure_notes=COALESCE(?,disclosure_notes),
+      protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END
+     WHERE id=?`
+  ).bind(
+    args.title ?? null,
+    hasStoryTime ? 1 : 0, args.story_time ?? null,
+    hasOrder ? 1 : 0, args.narrative_order ?? null,
+    args.location ?? null,
+    args.disclosure_notes ?? null,
+    hasIdentity ? 1 : 0, args.protagonist_identity_id ?? null,
+    args.scene_id
+  ).run();
   return { ok: true, scene_id: args.scene_id };
 }
 
@@ -645,6 +761,65 @@ async function addCharacterState(db: D1Database, args: { character_id: string; s
   await db.prepare("INSERT INTO character_states (id,character_id,valid_from,appearance,status,notes) VALUES (?,?,?,?,?,?)")
     .bind(id, args.character_id, scene.story_time, args.appearance ?? null, args.status ?? null, args.notes ?? null).run();
   return { ok: true, id, character_id: args.character_id, valid_from: scene.story_time, scene_title: scene.title };
+}
+
+async function updateCharacter(db: D1Database, args: { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null }): Promise<unknown> {
+  const char = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
+  if (!char) return { error: `Character '${args.id}' not found` };
+  await db.prepare(
+    `UPDATE characters SET
+      name=COALESCE(?,name),
+      aliases=CASE WHEN ?=1 THEN ? ELSE aliases END,
+      role=COALESCE(?,role),
+      description=CASE WHEN ?=1 THEN ? ELSE description END,
+      secret=CASE WHEN ?=1 THEN ? ELSE secret END
+     WHERE id=?`
+  ).bind(
+    args.name ?? null,
+    'aliases' in args ? 1 : 0, args.aliases ?? null,
+    args.role ?? null,
+    'description' in args ? 1 : 0, args.description ?? null,
+    'secret' in args ? 1 : 0, args.secret ?? null,
+    args.id
+  ).run();
+  return { ok: true, id: args.id };
+}
+
+async function deleteCharacter(db: D1Database, args: { id: string }): Promise<unknown> {
+  const char = await db.prepare("SELECT id, name FROM characters WHERE id=?").bind(args.id).first() as { id: string; name: string } | null;
+  if (!char) return { error: `Character '${args.id}' not found` };
+  const inSwap = await db.prepare("SELECT COUNT(*) as n FROM consciousness_swaps WHERE from_character_id=? OR to_character_id=?").bind(args.id, args.id).first<{ n: number }>();
+  if (inSwap && inSwap.n > 0) return { error: `キャラ「${char.name}」は意識入れ替わりレコード ${inSwap.n} 件に参照されています。先に入れ替わりを削除してください。` };
+  await db.prepare("DELETE FROM scene_characters WHERE character_id=?").bind(args.id).run();
+  await db.prepare("DELETE FROM character_states WHERE character_id=?").bind(args.id).run();
+  await db.prepare("DELETE FROM relationships WHERE character_id_a=? OR character_id_b=?").bind(args.id, args.id).run();
+  await db.prepare("DELETE FROM characters WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id, name: char.name };
+}
+
+async function updateRelationship(db: D1Database, args: { id: string; relation_type?: string; is_public?: boolean; notes?: string | null }): Promise<unknown> {
+  const rel = await db.prepare("SELECT id FROM relationships WHERE id=?").bind(args.id).first();
+  if (!rel) return { error: `Relationship '${args.id}' not found` };
+  await db.prepare(
+    `UPDATE relationships SET
+      relation_type=COALESCE(?,relation_type),
+      is_public=COALESCE(?,is_public),
+      notes=CASE WHEN ?=1 THEN ? ELSE notes END
+     WHERE id=?`
+  ).bind(
+    args.relation_type ?? null,
+    args.is_public != null ? (args.is_public ? 1 : 0) : null,
+    'notes' in args ? 1 : 0, args.notes ?? null,
+    args.id
+  ).run();
+  return { ok: true, id: args.id };
+}
+
+async function deleteRelationship(db: D1Database, args: { id: string }): Promise<unknown> {
+  const rel = await db.prepare("SELECT id FROM relationships WHERE id=?").bind(args.id).first();
+  if (!rel) return { error: `Relationship '${args.id}' not found` };
+  await db.prepare("DELETE FROM relationships WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
 }
 
 async function addRelationship(db: D1Database, args: { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string }): Promise<unknown> {
@@ -706,20 +881,38 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
           case "check_all_consistency":
             toolResult = await checkAllConsistency(env.DB);
             break;
+          case "create_scene":
+            toolResult = await createScene(env.DB, toolArgs as { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string });
+            break;
+          case "delete_scene":
+            toolResult = await deleteScene(env.DB, toolArgs as { scene_id: string });
+            break;
           case "save_scene_body":
             toolResult = await saveSceneBody(env.DB, toolArgs as { scene_id: string; body: string });
             break;
           case "update_scene":
-            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; location?: string; disclosure_notes?: string });
+            toolResult = await updateScene(env.DB, toolArgs as { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null });
             break;
           case "create_character":
             toolResult = await createCharacter(env.DB, toolArgs as { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string });
+            break;
+          case "update_character":
+            toolResult = await updateCharacter(env.DB, toolArgs as { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null });
+            break;
+          case "delete_character":
+            toolResult = await deleteCharacter(env.DB, toolArgs as { id: string });
             break;
           case "add_character_state":
             toolResult = await addCharacterState(env.DB, toolArgs as { character_id: string; scene_id: string; appearance?: string; status?: string; notes?: string });
             break;
           case "add_relationship":
             toolResult = await addRelationship(env.DB, toolArgs as { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string });
+            break;
+          case "update_relationship":
+            toolResult = await updateRelationship(env.DB, toolArgs as { id: string; relation_type?: string; is_public?: boolean; notes?: string | null });
+            break;
+          case "delete_relationship":
+            toolResult = await deleteRelationship(env.DB, toolArgs as { id: string });
             break;
           default:
             return { jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown tool: ${toolName}` } };
