@@ -16,7 +16,17 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
+const VERSION = "0.5.0";
+
 const TOOLS = [
+  {
+    name: "help",
+    description: "このMCP（novelsync-mcp）の使い方を返す。全ツール・各統合ツールのaction一覧・引数・執筆時のコツ（同時刻シーンの扱い、整合性チェック、意識入れ替わりの編集方法など）をまとめて返す。どのツールを使えばよいか分からないときは最初にこれを呼ぶ。",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
   {
     name: "get_character",
     description: "Get a character and their state at a given story time",
@@ -30,16 +40,8 @@ const TOOLS = [
     },
   },
   {
-    name: "list_characters",
-    description: "List all characters (id, name, aliases, role)",
-    inputSchema: {
-      type: "object",
-      properties: {},
-    },
-  },
-  {
-    name: "list_scenes",
-    description: "全シーン一覧を取得する（id・タイトル・執筆順・物語時間・執筆済みフラグ）。シーンIDを調べるときに使う。",
+    name: "list_overview",
+    description: "全シーン一覧と全キャラクター一覧をまとめて取得する。scenes（id・タイトル・執筆順・物語時間・場所・執筆済みフラグ）と characters（id・名前・別名・役割）を返す。シーンIDやキャラIDを調べる最初のオリエンテーションに使う。",
     inputSchema: {
       type: "object",
       properties: {},
@@ -246,6 +248,62 @@ async function listScenes(db: D1Database): Promise<unknown> {
     "SELECT id, title, narrative_order, story_time, location, is_written FROM scenes ORDER BY narrative_order ASC, story_time ASC"
   ).all();
   return { scenes: result.results };
+}
+
+async function listOverview(db: D1Database): Promise<unknown> {
+  const scenes = (await listScenes(db)) as { scenes: unknown[] };
+  const characters = (await listCharacters(db)) as { characters: unknown[] };
+  return { scenes: scenes.scenes, characters: characters.characters };
+}
+
+function getHelp(): unknown {
+  return {
+    server: "novelsync-mcp",
+    version: VERSION,
+    overview:
+      "異世界転生小説の設定管理MCP。キャラクター・シーン・世界ルール・意識の入れ替わりを管理し、執筆時の整合性（時系列・参照・開示状態）を保つ。",
+    tool_count: TOOLS.length,
+    design_note:
+      "ツール総数は12以下に保つ（一部のMCPクライアントが tools/list を先頭12件で打ち切るため）。書き込み系は action 引数で操作を切り替える統合ツールに集約している。読み取り系を配列の先頭に置く。",
+    tools: TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      args: Object.keys((t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}),
+      required: (t.inputSchema as { required?: string[] }).required ?? [],
+    })),
+    write_actions: {
+      manage_scene: {
+        create: "新規シーン作成。id・title 必須（story_time/narrative_order/location/disclosure_notes 任意）",
+        update: "メタ情報更新。scene_id 必須。story_time・narrative_order・protagonist_identity_id も変更可（null でクリア）",
+        delete: "シーン削除。scene_id 必須（scene_characters も同時削除）",
+        save_body: "本文保存。scene_id・body 必須（is_written が true になる）",
+      },
+      manage_character: {
+        create: "新規キャラ作成。id・name 必須",
+        update: "情報更新。id 必須（aliases/description/secret は null でクリア）",
+        delete: "キャラ削除。id 必須（consciousness_swaps に参照があるとエラー）",
+        add_state: "状態変化（外見・生死・メモ）をシーン時点で記録。character_id・scene_id 必須。変身/意識入れ替わり/負傷の記録に使う",
+      },
+      manage_relationship: {
+        create: "関係性登録。character_id_a・character_id_b・relation_type 必須",
+        update: "関係性更新。id 必須",
+        delete: "関係性削除。id 必須",
+      },
+      manage_world_rule: {
+        create: "世界ルール登録。id・category・rule 必須",
+        update: "世界ルール更新。id 必須",
+        delete: "世界ルール削除。id 必須",
+      },
+    },
+    tips: [
+      "最初のオリエンテーションは list_overview（全シーン＋全キャラ一覧）。個別は get_scene_context(scene_id) と get_character(id)。",
+      "同時刻の並行シーンは同じ story_time を与え、narrative_order だけ別番号にする（order の重複・欠番は check_all_consistency がエラー扱い）。",
+      "シーンの追加・削除・並べ替え・時刻変更はすべて manage_scene（action=create/delete/update）で可能。執筆順や物語時間も update で変更できる。",
+      "本文の書き込みは manage_scene{action:'save_body', scene_id, body}。",
+      "大きな再構成のあとは必ず check_all_consistency で時系列・参照整合・順序を確認する。",
+      "意識入れ替わり（consciousness_swaps）の作成・編集は現状 Web UI / REST API（/api/consciousness_swaps）でのみ可能。MCP ツールには未対応。",
+    ],
+  };
 }
 
 async function getSceneContext(db: D1Database, args: { scene_id: string }): Promise<unknown> {
@@ -799,7 +857,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
           result: {
             protocolVersion: "2025-03-26",
             capabilities: { tools: {} },
-            serverInfo: { name: "novelsync-mcp", version: "0.4.0" },
+            serverInfo: { name: "novelsync-mcp", version: VERSION },
           },
         };
       case "notifications/initialized":
@@ -813,14 +871,14 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
         const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
         let toolResult: unknown;
         switch (toolName) {
+          case "help":
+            toolResult = getHelp();
+            break;
           case "get_character":
             toolResult = await getCharacter(env.DB, toolArgs as { id: string; scene_time?: string });
             break;
-          case "list_characters":
-            toolResult = await listCharacters(env.DB);
-            break;
-          case "list_scenes":
-            toolResult = await listScenes(env.DB);
+          case "list_overview":
+            toolResult = await listOverview(env.DB);
             break;
           case "get_scene_context":
             toolResult = await getSceneContext(env.DB, toolArgs as { scene_id: string });
@@ -1341,7 +1399,7 @@ export default {
 
     // Health check
     if (request.method === "GET") {
-      return new Response(JSON.stringify({ name: "novelsync-mcp", version: "0.4.0", status: "ok", tool_count: TOOLS.length }), {
+      return new Response(JSON.stringify({ name: "novelsync-mcp", version: VERSION, status: "ok", tool_count: TOOLS.length }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
