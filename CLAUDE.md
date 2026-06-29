@@ -63,7 +63,7 @@ Workers Builds の設定:
 | ツール | `action` | 主な引数 |
 |---|---|---|
 | `manage_scene` | `create` / `update` / `delete` / `save_body` | create: `id`,`title`… ／ update・delete・save_body: `scene_id`（save_bodyは `body` 必須） |
-| `manage_character` | `create` / `update` / `delete` / `add_state` | create・update・delete: `id` ／ add_state: `character_id`,`scene_id`,`appearance`,`status`,`notes` |
+| `manage_character` | `create` / `update` / `delete` / `add_state` / `add_swap` / `update_swap` / `delete_swap` | create・update・delete: `id` ／ add_state: `character_id`,`scene_id`,`appearance`,`status`,`notes` ／ swap系: `swap_id`,`from_character_id`(自我),`to_character_id`(身体),`swapped_at`… |
 | `manage_relationship` | `create` / `update` / `delete` | create: `character_id_a`,`character_id_b`,`relation_type` ／ update・delete: `id` |
 | `manage_world_rule` | `create` / `update` / `delete` | create: `id`,`category`,`rule` ／ update・delete: `id` |
 
