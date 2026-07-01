@@ -10,6 +10,7 @@ import Migrate from "./pages/Migrate";
 import ConsciousnessSwaps from "./pages/ConsciousnessSwaps";
 import Relationships from "./pages/Relationships";
 import RelationGraph from "./pages/RelationGraph";
+import StoryReader from "./pages/StoryReader";
 import Login from "./pages/Login";
 import { isAuthenticated } from "./auth";
 
@@ -63,6 +64,7 @@ export default function App() {
               <Route path="/consciousness" element={<ConsciousnessSwaps />} />
               <Route path="/relationships" element={<Relationships />} />
               <Route path="/relation-graph" element={<RelationGraph />} />
+              <Route path="/story" element={<StoryReader />} />
               <Route path="/migrate" element={<Migrate />} />
             </Routes>
           </main>
