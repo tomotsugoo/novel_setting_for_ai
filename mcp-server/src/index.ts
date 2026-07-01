@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 
 const TOOLS = [
   {
@@ -440,7 +440,9 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   // 主人公ステータスを合成（視点キャラ(is_pov=1) × 体の持ち主 × 外見状態）
   let protagonistStatus: Record<string, unknown> | null = null;
   const povChar = sceneCharacters.find((sc: Record<string, unknown>) => sc.is_pov === 1);
-  const protagonistId = povChar ? (povChar.character_id as string) : null;
+  // protagonist_identity_id（意識レベルの主人公）を優先。未設定なら is_pov キャラにフォールバック
+  const protagonistId = (scene.protagonist_identity_id as string | null | undefined)
+    ?? (povChar ? (povChar.character_id as string) : null);
   if (protagonistId) {
     const identityChar = await db.prepare("SELECT id, name, role FROM characters WHERE id=?").bind(protagonistId).first() as { id: string; name: string; role: string } | null;
 
