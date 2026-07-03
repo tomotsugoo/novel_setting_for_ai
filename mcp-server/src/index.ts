@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.7.1";
+const VERSION = "0.8.0";
 
 const TOOLS = [
   {
@@ -91,20 +91,21 @@ const TOOLS = [
   },
   {
     name: "manage_scene",
-    description: "シーンの作成・更新・削除・本文保存をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・is_writtenをtrueにする）。",
+    description: "シーンの作成・更新・削除・本文保存・並べ替え・本文履歴をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・上書き前の本文は自動で履歴に退避）、insert_at=シーンを指定話数の位置へ移動し全体を1..Nで自動リナンバー（scene_id,narrative_order必須・重複や欠番も解消）、list_revisions=本文履歴一覧（scene_id必須）、restore_revision=履歴から本文を復元（revision_id必須・復元前の本文も退避される）。",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / save_body" },
+        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision" },
         id: { type: "string", description: "シーンID（action=create時）" },
-        scene_id: { type: "string", description: "シーンID（update/delete/save_body時）" },
+        scene_id: { type: "string", description: "シーンID（update/delete/save_body/insert_at/list_revisions時）" },
         title: { type: "string", description: "タイトル" },
         story_time: { type: "string", description: "物語内時刻（ISO8601）。updateでnullを渡すと削除" },
-        narrative_order: { type: "number", description: "執筆順（話数）。updateでnullを渡すとクリア" },
+        narrative_order: { type: "number", description: "執筆順（話数）。updateでnullを渡すとクリア。insert_atでは移動先の話数" },
         location: { type: "string", description: "場所" },
         disclosure_notes: { type: "string", description: "開示メモ" },
         protagonist_identity_id: { type: "string", description: "主人公の自認＝語り手の意識のキャラID（update時）。入れ替わり中は「中身」のキャラを指定する（体の視点is_povとは別）。nullでクリア" },
         body: { type: "string", description: "本文テキスト（save_body時）" },
+        revision_id: { type: "string", description: "本文履歴ID（restore_revision時）" },
       },
       required: ["action"],
     },
@@ -284,7 +285,10 @@ function getHelp(): unknown {
         create: "新規シーン作成。id・title 必須（story_time/narrative_order/location/disclosure_notes 任意）",
         update: "メタ情報更新。scene_id 必須。story_time・narrative_order・protagonist_identity_id も変更可（null でクリア）",
         delete: "シーン削除。scene_id 必須（scene_characters も同時削除）",
-        save_body: "本文保存。scene_id・body 必須（is_written が true になる）",
+        save_body: "本文保存。scene_id・body 必須（is_written が true になる）。上書き前の本文は自動で履歴に退避（直近20件）",
+        insert_at: "シーンを指定話数の位置へ移動。scene_id・narrative_order 必須。全シーンを1..Nで振り直すので重複・欠番も解消される",
+        list_revisions: "本文の履歴一覧。scene_id 必須（各履歴のid・保存日時・文字数を返す）",
+        restore_revision: "履歴から本文を復元。revision_id 必須（復元前の本文も履歴に退避される）",
       },
       manage_character: {
         create: "新規キャラ作成。id・name 必須",
@@ -309,8 +313,8 @@ function getHelp(): unknown {
     tips: [
       "最初のオリエンテーションは list_overview（全シーン＋全キャラ一覧）。個別は get_scene_context(scene_id) と get_character(id)。",
       "同時刻の並行シーンは同じ story_time を与え、narrative_order だけ別番号にする（order の重複・欠番は check_all_consistency がエラー扱い）。",
-      "シーンの追加・削除・並べ替え・時刻変更はすべて manage_scene（action=create/delete/update）で可能。執筆順や物語時間も update で変更できる。",
-      "本文の書き込みは manage_scene{action:'save_body', scene_id, body}。",
+      "シーンの追加・削除・並べ替え・時刻変更はすべて manage_scene で可能。話の間に挿入したいときは insert_at（自動リナンバー）を使うと重複・欠番が起きない。",
+      "本文の書き込みは manage_scene{action:'save_body', scene_id, body}。上書き前の本文は自動で履歴に残る。書き直しに失敗したら list_revisions → restore_revision で戻せる。",
       "大きな再構成のあとは必ず check_all_consistency で時系列・参照整合・順序を確認する。",
       "意識入れ替わり（consciousness_swaps）は manage_character の add_swap/update_swap/delete_swap で管理できる（from=自我、to=入る身体）。シーンの視点は manage_scene{action:'update', protagonist_identity_id}で設定。Web UI / REST API（/api/consciousness_swaps）でも編集可。",
     ],
@@ -712,15 +716,73 @@ async function deleteScene(db: D1Database, args: { scene_id: string }): Promise<
   const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first() as { id: string; title: string } | null;
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
   await db.prepare("DELETE FROM scene_characters WHERE scene_id=?").bind(args.scene_id).run();
+  try { await db.prepare("DELETE FROM scene_body_revisions WHERE scene_id=?").bind(args.scene_id).run(); } catch { /* テーブル未作成なら無視 */ }
   await db.prepare("DELETE FROM scenes WHERE id=?").bind(args.scene_id).run();
   return { ok: true, scene_id: args.scene_id, title: scene.title };
 }
 
+// 上書き前の本文を履歴に退避する（シーンごとに直近20件保持）。
+// 履歴テーブル未作成などで失敗しても本文保存自体は止めない。
+const REVISIONS_KEPT = 20;
+async function archiveBodyRevision(db: D1Database, sceneId: string, currentBody: string | null, newBody: string | null): Promise<boolean> {
+  if (!currentBody || currentBody === newBody) return false;
+  try {
+    await db.prepare("INSERT INTO scene_body_revisions (id, scene_id, body, saved_at) VALUES (?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), sceneId, currentBody, new Date().toISOString()).run();
+    await db.prepare(
+      `DELETE FROM scene_body_revisions WHERE scene_id=? AND id NOT IN (
+         SELECT id FROM scene_body_revisions WHERE scene_id=? ORDER BY saved_at DESC LIMIT ?)`
+    ).bind(sceneId, sceneId, REVISIONS_KEPT).run();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function saveSceneBody(db: D1Database, args: { scene_id: string; body: string }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id, title, body FROM scenes WHERE id=?").bind(args.scene_id).first() as { id: string; title: string; body: string | null } | null;
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  const archived = await archiveBodyRevision(db, args.scene_id, scene.body, args.body);
+  await db.prepare("UPDATE scenes SET body=?, is_written=1 WHERE id=?").bind(args.body, args.scene_id).run();
+  return { ok: true, scene_id: args.scene_id, title: scene.title, characters: args.body.length, previous_body_archived: archived };
+}
+
+async function listBodyRevisions(db: D1Database, args: { scene_id: string }): Promise<unknown> {
   const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
-  await db.prepare("UPDATE scenes SET body=?, is_written=1 WHERE id=?").bind(args.body, args.scene_id).run();
-  return { ok: true, scene_id: args.scene_id, title: scene.title, characters: args.body.length };
+  const rows = (
+    await db.prepare("SELECT id, saved_at, length(body) as char_count FROM scene_body_revisions WHERE scene_id=? ORDER BY saved_at DESC").bind(args.scene_id).all()
+  ).results;
+  return { scene_id: args.scene_id, title: scene.title, revisions: rows };
+}
+
+async function restoreBodyRevision(db: D1Database, args: { revision_id: string }): Promise<unknown> {
+  const rev = await db.prepare("SELECT * FROM scene_body_revisions WHERE id=?").bind(args.revision_id).first() as { id: string; scene_id: string; body: string; saved_at: string } | null;
+  if (!rev) return { error: `Revision '${args.revision_id}' not found` };
+  const cur = await db.prepare("SELECT body FROM scenes WHERE id=?").bind(rev.scene_id).first() as { body: string | null } | null;
+  await archiveBodyRevision(db, rev.scene_id, cur?.body ?? null, rev.body);
+  await db.prepare("UPDATE scenes SET body=?, is_written=1 WHERE id=?").bind(rev.body, rev.scene_id).run();
+  return { ok: true, scene_id: rev.scene_id, restored_from: rev.saved_at, char_count: rev.body.length };
+}
+
+async function insertSceneAt(db: D1Database, args: { scene_id: string; narrative_order: number }): Promise<unknown> {
+  const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first() as { id: string; title: string } | null;
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  if (!args.narrative_order || args.narrative_order < 1) return { error: "narrative_order は1以上で指定してください" };
+  const ordered = (
+    await db.prepare("SELECT id, title, narrative_order FROM scenes WHERE narrative_order IS NOT NULL AND id != ? ORDER BY narrative_order ASC").bind(args.scene_id).all()
+  ).results as Array<{ id: string; title: string; narrative_order: number }>;
+  const pos = Math.min(args.narrative_order, ordered.length + 1);
+  ordered.splice(pos - 1, 0, { id: scene.id, title: scene.title, narrative_order: -1 });
+  // 全体を1..Nで振り直す（重複・欠番もここで解消）。D1のレース回避のため逐次await
+  const renumbered: string[] = [];
+  for (let i = 0; i < ordered.length; i++) {
+    if (ordered[i].narrative_order !== i + 1) {
+      await db.prepare("UPDATE scenes SET narrative_order=? WHERE id=?").bind(i + 1, ordered[i].id).run();
+      renumbered.push(`第${i + 1}話 ← 「${ordered[i].title}」`);
+    }
+  }
+  return { ok: true, scene_id: scene.id, title: scene.title, new_order: pos, renumbered };
 }
 
 async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null }): Promise<unknown> {
@@ -992,8 +1054,17 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "save_body":
                 toolResult = await saveSceneBody(env.DB, { scene_id: sceneId, body: a.body as string });
                 break;
+              case "insert_at":
+                toolResult = await insertSceneAt(env.DB, { scene_id: sceneId, narrative_order: a.narrative_order as number });
+                break;
+              case "list_revisions":
+                toolResult = await listBodyRevisions(env.DB, { scene_id: sceneId });
+                break;
+              case "restore_revision":
+                toolResult = await restoreBodyRevision(env.DB, { revision_id: a.revision_id as string });
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision)` } };
             }
             break;
           }
@@ -1192,6 +1263,10 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null};
         const hasIdentity = 'protagonist_identity_id' in (body as object);
         const hasBody = 'body' in (body as object);
+        if (hasBody) {
+          const cur = await env.DB.prepare("SELECT body FROM scenes WHERE id=?").bind(id).first() as { body: string | null } | null;
+          await archiveBodyRevision(env.DB, id, cur?.body ?? null, body.body ?? null);
+        }
         await env.DB.prepare(
           "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END WHERE id=?"
         ).bind(
@@ -1320,6 +1395,33 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         await env.DB.prepare("DELETE FROM consciousness_swaps WHERE id=?").bind(id).run();
         return json({ ok: true });
       }
+    }
+
+    if (resource === 'scene_revisions') {
+      if (method === 'GET' && id) {
+        // idはscene_id。履歴一覧（本文込み・新しい順）
+        const result = await env.DB.prepare(
+          "SELECT id, scene_id, saved_at, length(body) as char_count, body FROM scene_body_revisions WHERE scene_id=? ORDER BY saved_at DESC"
+        ).bind(id).all();
+        return json({ revisions: result.results });
+      }
+      if (method === 'DELETE' && id) {
+        await env.DB.prepare("DELETE FROM scene_body_revisions WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
+    if (resource === 'export' && method === 'GET') {
+      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions'];
+      const data: Record<string, unknown> = {};
+      for (const tbl of tables) {
+        try {
+          data[tbl] = (await env.DB.prepare(`SELECT * FROM ${tbl}`).all()).results;
+        } catch {
+          data[tbl] = [];
+        }
+      }
+      return json({ exported_at: new Date().toISOString(), version: VERSION, tables: data });
     }
 
     if (resource === 'character_states') {
@@ -1463,6 +1565,12 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
            0, notes FROM scene_characters`,
         `DROP TABLE IF EXISTS scene_characters`,
         `ALTER TABLE scene_characters_new RENAME TO scene_characters`,
+        `CREATE TABLE IF NOT EXISTS scene_body_revisions (
+          id TEXT PRIMARY KEY,
+          scene_id TEXT NOT NULL REFERENCES scenes(id),
+          body TEXT NOT NULL,
+          saved_at TEXT NOT NULL
+        )`,
         `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
          VALUES (
            'hoshifune-inori',

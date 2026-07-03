@@ -62,7 +62,7 @@ Workers Builds の設定:
 
 | ツール | `action` | 主な引数 |
 |---|---|---|
-| `manage_scene` | `create` / `update` / `delete` / `save_body` | create: `id`,`title`… ／ update・delete・save_body: `scene_id`（save_bodyは `body` 必須） |
+| `manage_scene` | `create` / `update` / `delete` / `save_body` / `insert_at` / `list_revisions` / `restore_revision` | create: `id`,`title`… ／ その他: `scene_id`（save_bodyは `body`、insert_atは `narrative_order`、restore_revisionは `revision_id` 必須）。save_bodyは上書き前の本文を自動で履歴退避（シーンごと直近20件）。insert_atは指定位置に挿入して全体を1..Nでリナンバー（重複・欠番解消） |
 | `manage_character` | `create` / `update` / `delete` / `add_state` / `add_swap` / `update_swap` / `delete_swap` | create・update・delete: `id` ／ add_state: `character_id`,`scene_id`,`appearance`,`status`,`notes` ／ swap系: `swap_id`,`from_character_id`(自我),`to_character_id`(身体),`swapped_at`… |
 | `manage_relationship` | `create` / `update` / `delete` | create: `character_id_a`,`character_id_b`,`relation_type` ／ update・delete: `id` |
 | `manage_world_rule` | `create` / `update` / `delete` | create: `id`,`category`,`rule` ／ update・delete: `id` |
@@ -74,6 +74,8 @@ Workers Builds の設定:
 - `GET/POST /api/rules`、`DELETE /api/rules/:id`
 - `GET/POST /api/scene_characters/:sceneId`、`DELETE /api/scene_characters/:sceneId/:characterId`
 - `GET/POST /api/consciousness_swaps`、`PUT/DELETE /api/consciousness_swaps/:id`
+- `GET /api/scene_revisions/:sceneId`（本文履歴一覧）、`DELETE /api/scene_revisions/:id`
+- `GET /api/export`（全テーブルJSON一括バックアップ）
 - `POST /api/migrate`、`GET /api/dashboard`
 
 ## フロントエンドの注意点（過去のハマりどころ）

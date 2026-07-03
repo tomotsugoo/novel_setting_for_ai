@@ -52,6 +52,11 @@ export const api = {
     update: (id: string, data: Partial<Relationship>) => apiFetch(`/api/relationships/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/relationships/${id}`, { method: 'DELETE' }),
   },
+  sceneRevisions: {
+    list: (sceneId: string) => apiFetch<{revisions: SceneBodyRevision[]}>(`/api/scene_revisions/${sceneId}`),
+    delete: (id: string) => apiFetch(`/api/scene_revisions/${id}`, { method: 'DELETE' }),
+  },
+  exportAll: () => apiFetch<{exported_at: string; version: string; tables: Record<string, unknown[]>}>('/api/export'),
 };
 
 export interface Character {
@@ -81,6 +86,10 @@ export interface ConsciousnessSwap {
   to_character_id: string; to_name?: string;
   swapped_at: string; resolved_at: string | null; ego_recovered_at: string | null;
   trigger_event: string | null; notes: string | null;
+}
+export interface SceneBodyRevision {
+  id: string; scene_id: string; saved_at: string;
+  char_count: number; body: string;
 }
 export interface CharacterState {
   id: string; character_id: string; valid_from: string; valid_to: string | null;

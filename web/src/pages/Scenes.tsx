@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Scene, Character, SceneCharacter } from '../api';
+import { api, Scene, Character, SceneCharacter, SceneBodyRevision } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
 import { genId } from '../utils';
@@ -111,6 +111,7 @@ export default function Scenes() {
   const [sceneTab, setSceneTab] = useState<'info' | 'body'>('info');
   const [bodyText, setBodyText] = useState('');
   const [bodySaving, setBodySaving] = useState(false);
+  const [revisions, setRevisions] = useState<SceneBodyRevision[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.scenes.list().then(r => setScenes(r.scenes)).catch((e: Error) => setError(e.message));
@@ -125,6 +126,7 @@ export default function Scenes() {
     setEditingScene(false);
     setSceneTab('info');
     setBodyText(scene.body ?? '');
+    setRevisions(null);
     setEditSceneForm({
       title: scene.title,
       story_time: scene.story_time ?? '',
@@ -143,8 +145,21 @@ export default function Scenes() {
       await api.scenes.update(detailScene.id, { body: bodyText || null });
       setDetailScene({ ...detailScene, body: bodyText || null });
       setScenes(ss => ss.map(s => s.id === detailScene.id ? { ...s, body: bodyText || null } : s));
+      // 履歴を開いていたら再読込（保存時に旧本文が退避されるため）
+      if (revisions !== null) {
+        const r = await api.sceneRevisions.list(detailScene.id);
+        setRevisions(r.revisions);
+      }
     } catch (e) { setError(String(e)); }
     setBodySaving(false);
+  };
+
+  const loadRevisions = async () => {
+    if (!detailScene) return;
+    try {
+      const r = await api.sceneRevisions.list(detailScene.id);
+      setRevisions(r.revisions);
+    } catch (e) { setError(String(e)); }
   };
 
   const handleEditScene = async (e: React.FormEvent) => {
@@ -311,12 +326,57 @@ export default function Scenes() {
               />
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-400">{bodyText.length} 文字</span>
-                <button
-                  onClick={handleSaveBody}
-                  disabled={bodySaving}
-                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                >{bodySaving ? '保存中…' : '保存'}</button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={loadRevisions}
+                    className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                  >履歴</button>
+                  <button
+                    onClick={handleSaveBody}
+                    disabled={bodySaving}
+                    className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >{bodySaving ? '保存中…' : '保存'}</button>
+                </div>
               </div>
+
+              {/* 本文履歴 */}
+              {revisions !== null && (
+                <div className="border rounded-lg p-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 mb-2">過去の版（保存時に自動退避・直近20件）</p>
+                  {revisions.length === 0 ? (
+                    <p className="text-xs text-gray-400">履歴はまだありません。本文を上書き保存すると前の版がここに残ります。</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {revisions.map(rev => (
+                        <li key={rev.id} className="flex items-center gap-2 text-xs bg-white rounded px-2 py-1.5 border">
+                          <span className="text-gray-600">{rev.saved_at.slice(0, 16).replace('T', ' ')}</span>
+                          <span className="text-gray-400">{rev.char_count.toLocaleString()} 文字</span>
+                          <div className="ml-auto flex gap-2 shrink-0">
+                            <button
+                              onClick={() => {
+                                if (confirm('この版を編集エリアに読み込みます。（「保存」を押すまでDBには反映されません）')) {
+                                  setBodyText(rev.body);
+                                }
+                              }}
+                              className="text-indigo-500 hover:text-indigo-700"
+                            >読み込む</button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm('この履歴を削除しますか？')) return;
+                                try {
+                                  await api.sceneRevisions.delete(rev.id);
+                                  setRevisions(rs => (rs ?? []).filter(r => r.id !== rev.id));
+                                } catch (e) { setError(String(e)); }
+                              }}
+                              className="text-red-400 hover:text-red-600"
+                            >削除</button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
           <div className="space-y-4">

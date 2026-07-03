@@ -79,6 +79,20 @@ export default function StoryReader() {
   const writtenCount = scenes.filter(s => s.body).length;
   const totalChars = scenes.reduce((sum, s) => sum + (s.body?.length ?? 0), 0);
 
+  const downloadTxt = () => {
+    const text = scenes
+      .filter(s => s.body)
+      .map(s => `${s.title}\n\n${s.body}`)
+      .join('\n\n\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `novelsync-story-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-4xl mx-auto">
       {/* ヘッダー */}
@@ -89,20 +103,29 @@ export default function StoryReader() {
             執筆済み {writtenCount} / {scenes.length} シーン ・ 計 {totalChars.toLocaleString()} 文字
           </p>
         </div>
-        <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
-          {(['full', 'single'] as Mode[]).map(m => (
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+            {(['full', 'single'] as Mode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-4 py-2 transition-colors ${
+                  mode === m
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {m === 'full' ? '全文通し読み' : 'シーン単独表示'}
+              </button>
+            ))}
+          </div>
+          {writtenCount > 0 && (
             <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-4 py-2 transition-colors ${
-                mode === m
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {m === 'full' ? '全文通し読み' : 'シーン単独表示'}
-            </button>
-          ))}
+              onClick={downloadTxt}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              title="執筆済みの本文をテキストファイルでダウンロード"
+            >⬇ txt</button>
+          )}
         </div>
       </div>
 

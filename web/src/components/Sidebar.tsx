@@ -10,7 +10,7 @@ const navItems = [
   { to: "/consciousness", label: "意識の入れ替わり" },
   { to: "/relationships", label: "関係性" },
   { to: "/relation-graph", label: "相関図" },
-  { to: "/migrate", label: "🔧 マイグレーション" },
+  { to: "/migrate", label: "🔧 データ管理" },
 ];
 
 interface Props {
