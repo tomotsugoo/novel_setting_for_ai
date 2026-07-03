@@ -40,6 +40,7 @@ export default function StoryReader() {
   const [mode, setMode] = useState<Mode>('full');
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
@@ -52,6 +53,9 @@ export default function StoryReader() {
       });
       setScenes(sorted);
       setLoading(false);
+    }).catch((e: Error) => {
+      setError(e.message);
+      setLoading(false);
     });
   }, []);
 
@@ -63,17 +67,28 @@ export default function StoryReader() {
     return <div className="flex items-center justify-center h-64 text-gray-500">読み込み中…</div>;
   }
 
+  if (error) {
+    return <div className="text-red-500 py-8">読み込みエラー: {error}</div>;
+  }
+
   if (scenes.length === 0) {
     return <div className="text-center text-gray-500 py-16">シーンがまだ登録されていません。</div>;
   }
 
   const currentScene = scenes[currentIndex];
+  const writtenCount = scenes.filter(s => s.body).length;
+  const totalChars = scenes.reduce((sum, s) => sum + (s.body?.length ?? 0), 0);
 
   return (
     <div className="max-w-4xl mx-auto">
       {/* ヘッダー */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">本文閲覧</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">本文閲覧</h1>
+          <p className="text-xs text-gray-400 mt-1">
+            執筆済み {writtenCount} / {scenes.length} シーン ・ 計 {totalChars.toLocaleString()} 文字
+          </p>
+        </div>
         <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
           {(['full', 'single'] as Mode[]).map(m => (
             <button

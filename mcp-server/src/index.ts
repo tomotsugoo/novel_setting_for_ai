@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.7.0";
+const VERSION = "0.7.1";
 
 const TOOLS = [
   {
@@ -103,7 +103,7 @@ const TOOLS = [
         narrative_order: { type: "number", description: "執筆順（話数）。updateでnullを渡すとクリア" },
         location: { type: "string", description: "場所" },
         disclosure_notes: { type: "string", description: "開示メモ" },
-        protagonist_identity_id: { type: "string", description: "視点キャラのID（update時、誰の意識が語り手か）。nullでクリア" },
+        protagonist_identity_id: { type: "string", description: "主人公の自認＝語り手の意識のキャラID（update時）。入れ替わり中は「中身」のキャラを指定する（体の視点is_povとは別）。nullでクリア" },
         body: { type: "string", description: "本文テキスト（save_body時）" },
       },
       required: ["action"],
@@ -437,7 +437,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     ? await db.prepare(`SELECT id, title, narrative_order, story_time, location FROM scenes WHERE narrative_order > ? ORDER BY narrative_order ASC LIMIT 1`).bind(narrativeOrder).first()
     : null;
 
-  // 主人公ステータスを合成（視点キャラ(is_pov=1) × 体の持ち主 × 外見状態）
+  // 主人公ステータスを合成（自認の意識 × 体の持ち主 × 外見状態）
   let protagonistStatus: Record<string, unknown> | null = null;
   const povChar = sceneCharacters.find((sc: Record<string, unknown>) => sc.is_pov === 1);
   // protagonist_identity_id（意識レベルの主人公）を優先。未設定なら is_pov キャラにフォールバック
@@ -499,6 +499,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
       swap_active: !!swapOut,
       ego_recovered_at: swapOut ? (swapOut.ego_recovered_at ?? null) : null,
       identity_self_recognition: scene.protagonist_identity_id ?? null,
+      ...(storyTime ? {} : { caution: "このシーンは story_time 未設定のため、意識入れ替わりの判定は行われていません（swap_active は信頼できません）" }),
     };
   }
 
@@ -529,12 +530,18 @@ async function checkConflict(db: D1Database, args: { description: string; scene_
 
   const conflicts: string[] = [];
   const desc = args.description.toLowerCase();
+  const deadStatuses = ["dead", "死亡", "死んでいる", "故人"];
+  const aliveVerbs = [
+    "speaks", "walks", "appears", "says",
+    "話す", "話し", "言う", "言っ", "喋", "歩", "現れ", "立ち上が", "笑", "叫", "答え", "動",
+  ];
 
   for (const state of states) {
     const name = (state.name as string).toLowerCase();
-    if (desc.includes(name) && state.status === "dead") {
-      if (desc.includes("speaks") || desc.includes("walks") || desc.includes("appears") || desc.includes("says")) {
-        conflicts.push(`Conflict: ${state.name} is dead at ${args.scene_time} but description implies they are alive`);
+    const status = ((state.status as string | null) ?? "").toLowerCase();
+    if (desc.includes(name) && deadStatuses.some(d => status.includes(d))) {
+      if (aliveVerbs.some(v => desc.includes(v))) {
+        conflicts.push(`矛盾の可能性: 「${state.name}」は ${args.scene_time} 時点で「${state.status}」ですが、記述では生きて行動しているように見えます`);
       }
     }
   }
@@ -543,7 +550,7 @@ async function checkConflict(db: D1Database, args: { description: string; scene_
     conflicts,
     character_states_checked: states.length,
     world_rules_checked: rules.length,
-    note: "Basic keyword check. Review manually for complex conflicts.",
+    note: "キーワードベースの簡易チェックです。複雑な矛盾は get_scene_context の内容と照らして手動確認してください。",
   };
 }
 
@@ -575,7 +582,7 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   const characters = (await db.prepare("SELECT id, name FROM characters").all()).results as Array<{ id: string; name: string }>;
   const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null }>;
   const swaps = (await db.prepare("SELECT * FROM consciousness_swaps ORDER BY swapped_at").all()).results as Array<{ id: string; from_character_id: string; to_character_id: string; swapped_at: string; resolved_at: string | null; trigger_event: string | null; notes: string | null }>;
-  const sceneChars = (await db.prepare("SELECT scene_id, character_id FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string }>;
+  const sceneChars = (await db.prepare("SELECT scene_id, character_id, is_pov FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string; is_pov: number }>;
 
   const charIds = new Set(characters.map(c => c.id));
   const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
@@ -615,16 +622,25 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
     }
   }
 
-  // 4. シーンのprotagonist_identity_idとその時刻のswapが一致しているか
+  // 4. シーンのprotagonist_identity_id（自認）の検証
   for (const scene of scenes) {
-    if (!scene.protagonist_identity_id || !scene.story_time) continue;
-    const t = scene.story_time;
-    const activeSwap = swaps.find(sw =>
-      sw.swapped_at <= t && (sw.resolved_at == null || sw.resolved_at > t) &&
-      (sw.from_character_id === scene.protagonist_identity_id || sw.to_character_id === scene.protagonist_identity_id)
-    );
-    if (!activeSwap && !charIds.has(scene.protagonist_identity_id)) {
+    if (!scene.protagonist_identity_id) continue;
+    if (!charIds.has(scene.protagonist_identity_id)) {
       issues.push({ severity: "error", category: "シーン自認", message: `シーン「${scene.title}」のprotagonist_identity_id「${scene.protagonist_identity_id}」はキャラ未登録です` });
+      continue;
+    }
+    if (!scene.story_time) continue;
+    const t = scene.story_time;
+    const povChar = sceneChars.find(sc => sc.scene_id === scene.id && sc.is_pov === 1);
+    // 自認と視点キャラ（体）が異なるのに、その時刻に有効な入れ替わり（自認の意識→視点キャラの体）が無ければ警告
+    if (povChar && povChar.character_id !== scene.protagonist_identity_id) {
+      const activeSwap = swaps.find(sw =>
+        sw.swapped_at <= t && (sw.resolved_at == null || sw.resolved_at > t) &&
+        sw.from_character_id === scene.protagonist_identity_id && sw.to_character_id === povChar.character_id
+      );
+      if (!activeSwap) {
+        issues.push({ severity: "warning", category: "シーン自認", message: `シーン「${scene.title}」は自認「${charName(scene.protagonist_identity_id)}」と視点キャラ「${charName(povChar.character_id)}」が異なりますが、この時刻に有効な入れ替わり（from=${charName(scene.protagonist_identity_id)}, to=${charName(povChar.character_id)}）が登録されていません` });
+      }
     }
   }
 

@@ -24,17 +24,18 @@ const MANUAL = [
       '→ get_scene_context が登場人物・関係性・前後シーン・世界ルールを一括取得',
       'AIに「このシーンの本文を書いて」と指示',
       '気に入ったら「この内容を保存して」と指示',
-      '→ save_scene_body で自動的にDBに保存・執筆済みフラグON',
+      '→ manage_scene（save_body）で自動的にDBに保存・執筆済みフラグON',
     ],
   },
   {
     title: '③ 執筆後の設定反映（MCPあり）',
     color: 'green',
     steps: [
-      '新キャラが登場 → 「キャラ[名前]をIDは[id]で登録して」',
-      '外見・状態が変わった → 「[キャラ]の外見が変わったので記録して」→ add_character_state',
-      '関係性が生まれた → 「AとBが[関係]になったので登録して」→ add_relationship',
-      '場所・メモを更新したい → 「このシーンの場所を[場所]に更新して」→ update_scene',
+      '新キャラが登場 → 「キャラ[名前]をIDは[id]で登録して」→ manage_character（create）',
+      '外見・状態が変わった → 「[キャラ]の外見が変わったので記録して」→ manage_character（add_state）',
+      '意識が入れ替わった → 「[A]の意識が[B]の体に入ったので登録して」→ manage_character（add_swap）',
+      '関係性が生まれた → 「AとBが[関係]になったので登録して」→ manage_relationship（create）',
+      '場所・メモを更新したい → 「このシーンの場所を[場所]に更新して」→ manage_scene（update）',
     ],
   },
   {
@@ -149,17 +150,17 @@ export default function Dashboard() {
             <h3 className="font-semibold text-gray-700 mb-3 text-sm">MCPコマンド早見表</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               {[
+                ['help', 'MCPの使い方・全ツール一覧を表示'],
+                ['list_overview', '全シーン＋全キャラ一覧'],
                 ['get_scene_context', 'シーン全情報を取得'],
-                ['list_characters', '全キャラ一覧'],
                 ['get_character', 'キャラ詳細＋意識状態'],
                 ['check_conflict', '記述の矛盾チェック'],
                 ['check_all_consistency', '全体整合性チェック'],
                 ['get_disclosure_level', '開示状態確認'],
-                ['save_scene_body', '本文を保存 ✍️'],
-                ['update_scene', 'シーン情報を更新 ✍️'],
-                ['create_character', 'キャラを新規登録 ✍️'],
-                ['add_character_state', 'キャラ状態変化を記録 ✍️'],
-                ['add_relationship', '関係性を追加 ✍️'],
+                ['manage_scene', 'シーン作成・更新・削除・本文保存 ✍️'],
+                ['manage_character', 'キャラ・状態変化・意識入れ替わり ✍️'],
+                ['manage_relationship', '関係性の作成・更新・削除 ✍️'],
+                ['manage_world_rule', '世界ルールの作成・更新・削除 ✍️'],
               ].map(([cmd, desc]) => (
                 <div key={cmd} className="flex items-start gap-2">
                   <code className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded text-xs shrink-0">{cmd}</code>

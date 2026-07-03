@@ -4,11 +4,11 @@ const navItems = [
   { to: "/", label: "ダッシュボード", exact: true },
   { to: "/characters", label: "キャラクター" },
   { to: "/scenes", label: "シーン" },
+  { to: "/story", label: "本文閲覧" },
   { to: "/timeline", label: "タイムライン" },
   { to: "/rules", label: "世界ルール" },
   { to: "/consciousness", label: "意識の入れ替わり" },
   { to: "/relationships", label: "関係性" },
-  { to: "/story", label: "本文閲覧" },
   { to: "/relation-graph", label: "相関図" },
   { to: "/migrate", label: "🔧 マイグレーション" },
 ];
@@ -23,7 +23,7 @@ export default function Sidebar({ onClose }: Props) {
       <div className="px-6 py-5 border-b border-gray-700 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold tracking-wide">NovelSync</h1>
-          <p className="text-xs text-gray-400 mt-1">v0.1</p>
+          <p className="text-xs text-gray-400 mt-1">v0.7</p>
         </div>
         {onClose && (
           <button
