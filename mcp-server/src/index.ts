@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 
 const TOOLS = [
   {
@@ -721,12 +721,25 @@ async function deleteScene(db: D1Database, args: { scene_id: string }): Promise<
   return { ok: true, scene_id: args.scene_id, title: scene.title };
 }
 
+// 履歴テーブルは初回アクセス時に自動作成する（POST /api/migrate 不要）
+async function ensureRevisionsTable(db: D1Database): Promise<void> {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS scene_body_revisions (
+      id TEXT PRIMARY KEY,
+      scene_id TEXT NOT NULL REFERENCES scenes(id),
+      body TEXT NOT NULL,
+      saved_at TEXT NOT NULL
+    )`
+  ).run();
+}
+
 // 上書き前の本文を履歴に退避する（シーンごとに直近20件保持）。
-// 履歴テーブル未作成などで失敗しても本文保存自体は止めない。
+// 履歴の退避に失敗しても本文保存自体は止めない。
 const REVISIONS_KEPT = 20;
 async function archiveBodyRevision(db: D1Database, sceneId: string, currentBody: string | null, newBody: string | null): Promise<boolean> {
   if (!currentBody || currentBody === newBody) return false;
   try {
+    await ensureRevisionsTable(db);
     await db.prepare("INSERT INTO scene_body_revisions (id, scene_id, body, saved_at) VALUES (?, ?, ?, ?)")
       .bind(crypto.randomUUID(), sceneId, currentBody, new Date().toISOString()).run();
     await db.prepare(
@@ -750,6 +763,7 @@ async function saveSceneBody(db: D1Database, args: { scene_id: string; body: str
 async function listBodyRevisions(db: D1Database, args: { scene_id: string }): Promise<unknown> {
   const scene = await db.prepare("SELECT id, title FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  await ensureRevisionsTable(db);
   const rows = (
     await db.prepare("SELECT id, saved_at, length(body) as char_count FROM scene_body_revisions WHERE scene_id=? ORDER BY saved_at DESC").bind(args.scene_id).all()
   ).results;
@@ -757,6 +771,7 @@ async function listBodyRevisions(db: D1Database, args: { scene_id: string }): Pr
 }
 
 async function restoreBodyRevision(db: D1Database, args: { revision_id: string }): Promise<unknown> {
+  await ensureRevisionsTable(db);
   const rev = await db.prepare("SELECT * FROM scene_body_revisions WHERE id=?").bind(args.revision_id).first() as { id: string; scene_id: string; body: string; saved_at: string } | null;
   if (!rev) return { error: `Revision '${args.revision_id}' not found` };
   const cur = await db.prepare("SELECT body FROM scenes WHERE id=?").bind(rev.scene_id).first() as { body: string | null } | null;
@@ -1398,6 +1413,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'scene_revisions') {
+      await ensureRevisionsTable(env.DB);
       if (method === 'GET' && id) {
         // idはscene_id。履歴一覧（本文込み・新しい順）
         const result = await env.DB.prepare(
