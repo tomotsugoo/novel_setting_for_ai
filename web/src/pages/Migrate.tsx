@@ -54,16 +54,16 @@ export default function Migrate() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">画像のファイル保存移行</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">画像保存の最適化</h2>
         <p className="text-gray-500 text-sm mb-4">
-          DBに保存されている旧形式（base64）のキャラクター画像を、ファイルストレージ（R2）へ移行します。一度実行すれば完了です。
+          旧形式（キャラ情報に直接埋め込み）の画像を専用の画像テーブルへ移します。一覧の読み込みが軽くなります。一度実行すれば完了です。
         </p>
         <button
           onClick={migrateAvatars}
           disabled={avatarMigrating}
           className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
         >
-          {avatarMigrating ? '移行中...' : '🖼 画像をファイル保存へ移行'}
+          {avatarMigrating ? '移行中...' : '🖼 画像保存を最適化'}
         </button>
         {avatarResults && (
           <ul className="mt-3 space-y-1">

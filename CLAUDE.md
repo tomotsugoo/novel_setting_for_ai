@@ -76,10 +76,10 @@ Workers Builds の設定:
 - `GET/POST /api/consciousness_swaps`、`PUT/DELETE /api/consciousness_swaps/:id`
 - `GET /api/scene_revisions/:sceneId`（本文履歴一覧）、`DELETE /api/scene_revisions/:id`
 - `GET /api/export`（全テーブルJSON一括バックアップ）
-- `GET/PUT/DELETE /api/avatars/:characterId`（キャラ画像。R2バケット `novelsync-avatars` にファイル保存。`characters.avatar` にはURLパスのみ格納）、`POST /api/avatars/migrate-from-db`（旧base64画像のR2移行）
+- `GET/PUT/DELETE /api/avatars/:characterId`（キャラ画像。D1の専用テーブル `character_avatars` にbase64で保存し、Cache-Control付きで画像として配信。`characters.avatar` にはURLパス `/api/avatars/:id?v=...` のみ格納。テーブルは初回アクセス時に自動作成）、`POST /api/avatars/migrate-from-db`（旧base64埋め込み画像の移行）
 - `POST /api/migrate`、`GET /api/dashboard`
 
-⚠️ R2バケット `novelsync-avatars` は Cloudflare ダッシュボードで手動作成が必要（wrangler.toml の `[[r2_buckets]]` バインディングが参照。バケットが無いと `wrangler deploy` が失敗する）。
+※ 画像はR2ではなくD1に保存している（ユーザーがR2のカード登録を望まなかったため）。一覧APIのレスポンスに画像データが混ざらないよう専用テーブル＋専用URLに分離している。
 
 ## フロントエンドの注意点（過去のハマりどころ）
 

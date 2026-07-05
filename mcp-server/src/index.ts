@@ -1,8 +1,5 @@
 export interface Env {
   DB: D1Database;
-  // R2バケット（novelsync-avatars）。キャラ画像のファイル保存先。
-  // バケット未作成だと wrangler deploy が失敗するので注意。
-  AVATARS?: R2Bucket;
 }
 
 interface JsonRpcRequest {
@@ -1415,33 +1412,42 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
-    // キャラクター画像（R2ファイル保存）。/api/avatars/:characterId
+    // キャラクター画像。D1の専用テーブル character_avatars に保存し、
+    // characters.avatar にはURLパス（/api/avatars/:id?v=...）だけを持たせる。
+    // 一覧APIのレスポンスが画像データで肥大化しないようにするための分離。
     if (resource === 'avatars') {
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS character_avatars (
+          character_id TEXT PRIMARY KEY REFERENCES characters(id),
+          data TEXT NOT NULL,
+          content_type TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`
+      ).run();
       if (id === 'migrate-from-db' && method === 'POST') {
-        // DBのbase64画像をR2へ移行し、avatarカラムをURLパスに置き換える
-        if (!env.AVATARS) return json({ error: 'R2バケット（AVATARS）が未設定です。Cloudflareダッシュボードで novelsync-avatars バケットを作成してください。' }, 500);
+        // characters.avatar のbase64を専用テーブルへ移し、avatarカラムをURLパスに置き換える
         const chars = (await env.DB.prepare("SELECT id, avatar FROM characters WHERE avatar LIKE 'data:%'").all()).results as Array<{ id: string; avatar: string }>;
         const results: string[] = [];
         for (const c of chars) {
           const m = c.avatar.match(/^data:([^;]+);base64,(.+)$/);
           if (!m) { results.push(`SKIP ${c.id}: data URI形式を解析できません`); continue; }
-          const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0));
-          await env.AVATARS.put(c.id, bytes, { httpMetadata: { contentType: m[1] } });
+          await env.DB.prepare("INSERT OR REPLACE INTO character_avatars (character_id, data, content_type, updated_at) VALUES (?, ?, ?, ?)")
+            .bind(c.id, m[2], m[1], new Date().toISOString()).run();
           const path = `/api/avatars/${c.id}?v=${Date.now()}`;
           await env.DB.prepare("UPDATE characters SET avatar=? WHERE id=?").bind(path, c.id).run();
-          results.push(`OK ${c.id}: ${(bytes.length / 1024).toFixed(1)}KB を移行`);
+          results.push(`OK ${c.id}: ${(m[2].length * 0.75 / 1024).toFixed(1)}KB を移行`);
         }
         return json({ migrated: results.length === 0 ? ['移行対象（base64画像）はありませんでした'] : results });
       }
       if (!id) return json({ error: 'character id required' }, 400);
-      if (!env.AVATARS) return json({ error: 'R2バケット（AVATARS）が未設定です。Cloudflareダッシュボードで novelsync-avatars バケットを作成してください。' }, 500);
       if (method === 'GET') {
-        const obj = await env.AVATARS.get(id);
-        if (!obj) return json({ error: 'Not found' }, 404);
-        return new Response(obj.body, {
+        const row = await env.DB.prepare("SELECT data, content_type FROM character_avatars WHERE character_id=?").bind(id).first() as { data: string; content_type: string } | null;
+        if (!row) return json({ error: 'Not found' }, 404);
+        const bytes = Uint8Array.from(atob(row.data), ch => ch.charCodeAt(0));
+        return new Response(bytes, {
           headers: {
             ...CORS,
-            'Content-Type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+            'Content-Type': row.content_type,
             'Cache-Control': 'public, max-age=31536000, immutable',
           },
         });
@@ -1451,15 +1457,23 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         if (!char) return json({ error: `Character '${id}' not found` }, 404);
         const data = await request.arrayBuffer();
         if (data.byteLength === 0) return json({ error: '画像データが空です' }, 400);
-        if (data.byteLength > 2 * 1024 * 1024) return json({ error: '画像は2MB以下にしてください' }, 400);
+        if (data.byteLength > 900 * 1024) return json({ error: '画像は900KB以下にしてください（アップロード時に自動縮小されます。このエラーが出る場合は画面を再読込してください）' }, 400);
+        // ArrayBuffer → base64（チャンク処理でスタック溢れ回避）
+        const u8 = new Uint8Array(data);
+        let binary = '';
+        for (let i = 0; i < u8.length; i += 0x8000) {
+          binary += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+        }
+        const b64 = btoa(binary);
         const contentType = request.headers.get('Content-Type') ?? 'image/jpeg';
-        await env.AVATARS.put(id, data, { httpMetadata: { contentType } });
+        await env.DB.prepare("INSERT OR REPLACE INTO character_avatars (character_id, data, content_type, updated_at) VALUES (?, ?, ?, ?)")
+          .bind(id, b64, contentType, new Date().toISOString()).run();
         const path = `/api/avatars/${id}?v=${Date.now()}`;
         await env.DB.prepare("UPDATE characters SET avatar=? WHERE id=?").bind(path, id).run();
         return json({ ok: true, avatar: path });
       }
       if (method === 'DELETE') {
-        await env.AVATARS.delete(id);
+        await env.DB.prepare("DELETE FROM character_avatars WHERE character_id=?").bind(id).run();
         await env.DB.prepare("UPDATE characters SET avatar=NULL WHERE id=?").bind(id).run();
         return json({ ok: true });
       }
@@ -1481,7 +1495,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'export' && method === 'GET') {
-      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions'];
+      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars'];
       const data: Record<string, unknown> = {};
       for (const tbl of tables) {
         try {

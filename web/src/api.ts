@@ -1,7 +1,7 @@
 const BASE = 'https://novelsync-mcp.tomotsugoo.workers.dev';
 
 // avatarカラムの値を表示用URLに解決する。
-// 新形式: "/api/avatars/:id?v=..."（R2ファイル保存） ／ 旧形式: "data:..."（base64・移行前）
+// 新形式: "/api/avatars/:id?v=..."（画像専用テーブルから配信） ／ 旧形式: "data:..."（base64埋め込み・移行前）
 export function avatarUrl(avatar: string | null | undefined): string | null {
   if (!avatar) return null;
   if (avatar.startsWith('/')) return `${BASE}${avatar}`;

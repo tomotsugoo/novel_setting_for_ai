@@ -138,7 +138,7 @@ export default function Characters() {
     setUploading(true);
     setError(null);
     try {
-      const blob = await resizeImageToBlob(file, 256);
+      const blob = await resizeImageToBlob(file, 512);
       const r = await api.characters.uploadAvatar(selected.id, blob);
       const updated = { ...selected, avatar: r.avatar };
       setSelected(updated);
