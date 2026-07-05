@@ -1,5 +1,8 @@
 export interface Env {
   DB: D1Database;
+  // R2バケット（novelsync-avatars）。キャラ画像のファイル保存先。
+  // バケット未作成だと wrangler deploy が失敗するので注意。
+  AVATARS?: R2Bucket;
 }
 
 interface JsonRpcRequest {
@@ -16,7 +19,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.8.1";
+const VERSION = "0.9.0";
 
 const TOOLS = [
   {
@@ -1408,6 +1411,56 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
       if (method === 'DELETE' && id) {
         await env.DB.prepare("DELETE FROM consciousness_swaps WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
+    // キャラクター画像（R2ファイル保存）。/api/avatars/:characterId
+    if (resource === 'avatars') {
+      if (id === 'migrate-from-db' && method === 'POST') {
+        // DBのbase64画像をR2へ移行し、avatarカラムをURLパスに置き換える
+        if (!env.AVATARS) return json({ error: 'R2バケット（AVATARS）が未設定です。Cloudflareダッシュボードで novelsync-avatars バケットを作成してください。' }, 500);
+        const chars = (await env.DB.prepare("SELECT id, avatar FROM characters WHERE avatar LIKE 'data:%'").all()).results as Array<{ id: string; avatar: string }>;
+        const results: string[] = [];
+        for (const c of chars) {
+          const m = c.avatar.match(/^data:([^;]+);base64,(.+)$/);
+          if (!m) { results.push(`SKIP ${c.id}: data URI形式を解析できません`); continue; }
+          const bytes = Uint8Array.from(atob(m[2]), ch => ch.charCodeAt(0));
+          await env.AVATARS.put(c.id, bytes, { httpMetadata: { contentType: m[1] } });
+          const path = `/api/avatars/${c.id}?v=${Date.now()}`;
+          await env.DB.prepare("UPDATE characters SET avatar=? WHERE id=?").bind(path, c.id).run();
+          results.push(`OK ${c.id}: ${(bytes.length / 1024).toFixed(1)}KB を移行`);
+        }
+        return json({ migrated: results.length === 0 ? ['移行対象（base64画像）はありませんでした'] : results });
+      }
+      if (!id) return json({ error: 'character id required' }, 400);
+      if (!env.AVATARS) return json({ error: 'R2バケット（AVATARS）が未設定です。Cloudflareダッシュボードで novelsync-avatars バケットを作成してください。' }, 500);
+      if (method === 'GET') {
+        const obj = await env.AVATARS.get(id);
+        if (!obj) return json({ error: 'Not found' }, 404);
+        return new Response(obj.body, {
+          headers: {
+            ...CORS,
+            'Content-Type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
+      }
+      if (method === 'PUT' || method === 'POST') {
+        const char = await env.DB.prepare("SELECT id FROM characters WHERE id=?").bind(id).first();
+        if (!char) return json({ error: `Character '${id}' not found` }, 404);
+        const data = await request.arrayBuffer();
+        if (data.byteLength === 0) return json({ error: '画像データが空です' }, 400);
+        if (data.byteLength > 2 * 1024 * 1024) return json({ error: '画像は2MB以下にしてください' }, 400);
+        const contentType = request.headers.get('Content-Type') ?? 'image/jpeg';
+        await env.AVATARS.put(id, data, { httpMetadata: { contentType } });
+        const path = `/api/avatars/${id}?v=${Date.now()}`;
+        await env.DB.prepare("UPDATE characters SET avatar=? WHERE id=?").bind(path, id).run();
+        return json({ ok: true, avatar: path });
+      }
+      if (method === 'DELETE') {
+        await env.AVATARS.delete(id);
+        await env.DB.prepare("UPDATE characters SET avatar=NULL WHERE id=?").bind(id).run();
         return json({ ok: true });
       }
     }

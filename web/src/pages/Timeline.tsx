@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Scene, ConsciousnessSwap, Character, SceneCharacter, Relationship } from '../api';
+import { api, avatarUrl, Scene, ConsciousnessSwap, Character, SceneCharacter, Relationship } from '../api';
 
 function Avatar({ src, name }: { src: string | null; name: string }) {
   if (src) return <img src={src} alt={name} className="w-6 h-6 rounded-full object-cover shrink-0" />;
@@ -43,7 +43,7 @@ export default function Timeline() {
   }, []);
 
   const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
-  const charAvatar = (id: string) => characters.find(c => c.id === id)?.avatar ?? null;
+  const charAvatar = (id: string) => avatarUrl(characters.find(c => c.id === id)?.avatar);
 
   // シーンをstory_time順にソート
   const sorted = [...scenes]

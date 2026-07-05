@@ -76,7 +76,10 @@ Workers Builds の設定:
 - `GET/POST /api/consciousness_swaps`、`PUT/DELETE /api/consciousness_swaps/:id`
 - `GET /api/scene_revisions/:sceneId`（本文履歴一覧）、`DELETE /api/scene_revisions/:id`
 - `GET /api/export`（全テーブルJSON一括バックアップ）
+- `GET/PUT/DELETE /api/avatars/:characterId`（キャラ画像。R2バケット `novelsync-avatars` にファイル保存。`characters.avatar` にはURLパスのみ格納）、`POST /api/avatars/migrate-from-db`（旧base64画像のR2移行）
 - `POST /api/migrate`、`GET /api/dashboard`
+
+⚠️ R2バケット `novelsync-avatars` は Cloudflare ダッシュボードで手動作成が必要（wrangler.toml の `[[r2_buckets]]` バインディングが参照。バケットが無いと `wrangler deploy` が失敗する）。
 
 ## フロントエンドの注意点（過去のハマりどころ）
 

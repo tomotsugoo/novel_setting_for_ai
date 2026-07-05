@@ -7,6 +7,8 @@ export default function Migrate() {
   const [done, setDone] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [avatarResults, setAvatarResults] = useState<string[] | null>(null);
+  const [avatarMigrating, setAvatarMigrating] = useState(false);
 
   const run = async () => {
     setLoading(true);
@@ -38,9 +40,41 @@ export default function Migrate() {
     setExporting(false);
   };
 
+  const migrateAvatars = async () => {
+    setAvatarMigrating(true);
+    try {
+      const r = await api.characters.migrateAvatars();
+      setAvatarResults(r.migrated);
+    } catch (e) {
+      setAvatarResults([`エラー: ${String(e)}`]);
+    }
+    setAvatarMigrating(false);
+  };
+
   return (
     <div className="space-y-8">
       <div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">画像のファイル保存移行</h2>
+        <p className="text-gray-500 text-sm mb-4">
+          DBに保存されている旧形式（base64）のキャラクター画像を、ファイルストレージ（R2）へ移行します。一度実行すれば完了です。
+        </p>
+        <button
+          onClick={migrateAvatars}
+          disabled={avatarMigrating}
+          className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
+        >
+          {avatarMigrating ? '移行中...' : '🖼 画像をファイル保存へ移行'}
+        </button>
+        {avatarResults && (
+          <ul className="mt-3 space-y-1">
+            {avatarResults.map((r, i) => (
+              <li key={i} className={`text-sm font-mono px-3 py-1 rounded ${r.startsWith('エラー') || r.startsWith('SKIP') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>{r}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="border-t pt-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">バックアップ</h2>
         <p className="text-gray-500 text-sm mb-4">
           全データ（キャラクター・シーン・本文・履歴・世界ルール・関係性・意識の入れ替わり）をJSONファイルでダウンロードします。定期的な保存をおすすめします。

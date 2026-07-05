@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, Character, CharacterState, Scene } from '../api';
+import { api, avatarUrl, Character, CharacterState, Scene } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
-import { genId, resizeImageToBase64 } from '../utils';
+import { genId, resizeImageToBlob } from '../utils';
 
 function Avatar({ src, name, size = 'md' }: { src: string | null; name: string; size?: 'sm' | 'md' | 'lg' }) {
   const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-20 h-20 text-2xl' : 'w-10 h-10 text-sm';
@@ -138,9 +138,9 @@ export default function Characters() {
     setUploading(true);
     setError(null);
     try {
-      const base64 = await resizeImageToBase64(file, 256);
-      await api.characters.update(selected.id, { avatar: base64 });
-      const updated = { ...selected, avatar: base64 };
+      const blob = await resizeImageToBlob(file, 256);
+      const r = await api.characters.uploadAvatar(selected.id, blob);
+      const updated = { ...selected, avatar: r.avatar };
       setSelected(updated);
       setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c));
     } catch (e) {
@@ -200,7 +200,7 @@ export default function Characters() {
           {characters.map(c => (
             <div key={c.id} onClick={() => openSelected(c)} className="bg-white rounded-xl shadow p-4 cursor-pointer hover:shadow-md active:bg-gray-50 transition-shadow">
               <div className="flex items-center gap-3 mb-2">
-                <Avatar src={c.avatar} name={c.name} size="md" />
+                <Avatar src={avatarUrl(c.avatar)} name={c.name} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-gray-900 truncate">{c.name}</span>
@@ -293,7 +293,7 @@ export default function Characters() {
             <div className="space-y-4 text-sm">
               {/* アイコン */}
               <div className="flex items-center gap-4">
-                <Avatar src={selected.avatar} name={selected.name} size="lg" />
+                <Avatar src={avatarUrl(selected.avatar)} name={selected.name} size="lg" />
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="relative">
                     <span className="px-3 py-1.5 text-xs bg-gray-100 rounded-lg text-gray-700 select-none">
@@ -302,7 +302,7 @@ export default function Characters() {
                     <input type="file" accept="image/*" disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={e => { const file = e.target.files?.[0]; if (file) handleAvatarUpload(file); e.target.value = ''; }} />
                   </div>
                   {selected.avatar && (
-                    <button onClick={async () => { await api.characters.update(selected.id, { avatar: null }); const updated = { ...selected, avatar: null }; setSelected(updated); setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c)); }} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-600">削除</button>
+                    <button onClick={async () => { await api.characters.deleteAvatar(selected.id); const updated = { ...selected, avatar: null }; setSelected(updated); setCharacters(cs => cs.map(c => c.id === selected.id ? updated : c)); }} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-600">削除</button>
                   )}
                 </div>
               </div>

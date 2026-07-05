@@ -1,5 +1,13 @@
 const BASE = 'https://novelsync-mcp.tomotsugoo.workers.dev';
 
+// avatarカラムの値を表示用URLに解決する。
+// 新形式: "/api/avatars/:id?v=..."（R2ファイル保存） ／ 旧形式: "data:..."（base64・移行前）
+export function avatarUrl(avatar: string | null | undefined): string | null {
+  if (!avatar) return null;
+  if (avatar.startsWith('/')) return `${BASE}${avatar}`;
+  return avatar;
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -15,6 +23,20 @@ export const api = {
     list: () => apiFetch<{characters: Character[]}>('/api/characters'),
     create: (data: Partial<Character>) => apiFetch('/api/characters', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: Partial<Character>) => apiFetch(`/api/characters/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    uploadAvatar: async (id: string, blob: Blob): Promise<{ok: boolean; avatar: string}> => {
+      const res = await fetch(`${BASE}/api/avatars/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+        body: blob,
+      });
+      if (!res.ok) {
+        const detail = await res.json().then(d => (d as {error?: string}).error).catch(() => null);
+        throw new Error(detail ?? `API error: ${res.status}`);
+      }
+      return res.json();
+    },
+    deleteAvatar: (id: string) => apiFetch(`/api/avatars/${id}`, { method: 'DELETE' }),
+    migrateAvatars: () => apiFetch<{migrated: string[]}>('/api/avatars/migrate-from-db', { method: 'POST' }),
   },
   scenes: {
     list: () => apiFetch<{scenes: Scene[]}>('/api/scenes'),

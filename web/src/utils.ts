@@ -1,6 +1,6 @@
 export const genId = () => Math.random().toString(36).slice(2, 10);
 
-export function resizeImageToBase64(file: File, size = 128): Promise<string> {
+export function resizeImageToBlob(file: File, size = 256): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -15,7 +15,11 @@ export function resizeImageToBase64(file: File, size = 128): Promise<string> {
       const sy = (img.height - min) / 2;
       ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
       URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+      canvas.toBlob(
+        blob => (blob ? resolve(blob) : reject(new Error('画像の変換に失敗しました'))),
+        'image/jpeg',
+        0.85
+      );
     };
     img.onerror = reject;
     img.src = url;

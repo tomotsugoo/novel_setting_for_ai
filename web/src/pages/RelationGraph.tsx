@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, Character, Relationship } from '../api';
+import { api, avatarUrl, Character, Relationship } from '../api';
 
 const NODE_R = 28;
 const WIDTH = 800;
@@ -46,7 +46,8 @@ export default function RelationGraph() {
         });
         setNodes(newNodes);
         c.characters.forEach(ch => {
-          if (ch.avatar) avatarImgs.current[ch.id] = ch.avatar;
+          const url = avatarUrl(ch.avatar);
+          if (url) avatarImgs.current[ch.id] = url;
         });
       })
       .catch(e => setError(String(e)));
