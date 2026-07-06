@@ -80,12 +80,21 @@ export default function StyleGuidePage() {
 
       {styles.length === 0 ? (
         <div className="bg-white rounded-xl shadow p-6">
-          <p className="text-gray-500 mb-4">まだ登録がありません。例えばこんなルールを登録できます：</p>
+          <p className="text-gray-500 mb-1">まだ登録がありません。</p>
+          <p className="text-xs text-gray-400 mb-4">↓は記入例です。「この例で追加」を押すと編集画面に読み込まれ、内容を直してから登録できます。</p>
           <ul className="space-y-2">
             {EXAMPLES.map((ex, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <span className="shrink-0 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded mt-0.5">{ex.category}</span>
-                <span className="text-gray-600">{ex.content}</span>
+                <span className="text-gray-600 flex-1">{ex.content}</span>
+                <button
+                  onClick={() => {
+                    setForm({ ...emptyForm, category: ex.category, content: ex.content });
+                    setEditId(null);
+                    setShowAdd(true);
+                  }}
+                  className="shrink-0 text-xs text-indigo-500 hover:text-indigo-700 whitespace-nowrap"
+                >この例で追加</button>
               </li>
             ))}
           </ul>
