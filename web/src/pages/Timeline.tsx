@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, avatarUrl, Scene, ConsciousnessSwap, Character, SceneCharacter, Relationship } from '../api';
+import { api, avatarUrl, Scene, ConsciousnessSwap, Character, SceneCharacter, Relationship, Episode } from '../api';
 
 function Avatar({ src, name }: { src: string | null; name: string }) {
   if (src) return <img src={src} alt={name} className="w-6 h-6 rounded-full object-cover shrink-0" />;
@@ -16,6 +16,7 @@ export default function Timeline() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [sceneCharsMap, setSceneCharsMap] = useState<Record<string, SceneCharacter[]>>({});
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,11 +25,13 @@ export default function Timeline() {
       api.consciousnessSwaps.list(),
       api.characters.list(),
       api.relationships.list(),
-    ]).then(async ([s, sw, c, rel]) => {
+      api.episodes.list().catch(() => ({ episodes: [] as Episode[] })),
+    ]).then(async ([s, sw, c, rel, eps]) => {
       setScenes(s.scenes);
       setSwaps(sw.swaps);
       setCharacters(c.characters);
       setRelationships(rel.relationships);
+      setEpisodes(eps.episodes);
       const map: Record<string, SceneCharacter[]> = {};
       await Promise.all(s.scenes.map(async scene => {
         try {
@@ -44,6 +47,11 @@ export default function Timeline() {
 
   const charName = (id: string) => characters.find(c => c.id === id)?.name ?? id;
   const charAvatar = (id: string) => avatarUrl(characters.find(c => c.id === id)?.avatar);
+  const episodeLabel = (episodeId: string | null) => {
+    if (!episodeId) return null;
+    const ep = episodes.find(e => e.id === episodeId);
+    return ep ? `第${ep.episode_number ?? '?'}話` : null;
+  };
 
   // シーンをstory_time順にソート
   const sorted = [...scenes]
@@ -90,7 +98,10 @@ export default function Timeline() {
                     {/* シーン情報 */}
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       {s.narrative_order != null && (
-                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">第{s.narrative_order}話</span>
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">#{s.narrative_order}</span>
+                      )}
+                      {episodeLabel(s.episode_id) && (
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">{episodeLabel(s.episode_id)}</span>
                       )}
                       <h3 className="font-semibold text-gray-900">{s.title}</h3>
                     </div>
