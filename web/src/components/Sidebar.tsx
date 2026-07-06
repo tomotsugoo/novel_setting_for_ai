@@ -4,6 +4,7 @@ const navItems = [
   { to: "/", label: "ダッシュボード", exact: true },
   { to: "/characters", label: "キャラクター" },
   { to: "/scenes", label: "シーン" },
+  { to: "/episodes", label: "話数管理" },
   { to: "/foreshadowings", label: "伏線" },
   { to: "/story", label: "本文閲覧" },
   { to: "/timeline", label: "タイムライン" },

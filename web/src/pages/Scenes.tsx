@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Scene, Character, SceneCharacter, SceneBodyRevision } from '../api';
+import { api, Scene, Character, SceneCharacter, SceneBodyRevision, Episode } from '../api';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
 import { genId } from '../utils';
@@ -107,7 +107,8 @@ export default function Scenes() {
   const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'present', is_pov: false, notes: '' });
   const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '' });
   const [editingScene, setEditingScene] = useState(false);
-  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '' });
+  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '', episode_id: '' });
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [sceneTab, setSceneTab] = useState<'info' | 'body'>('info');
   const [bodyText, setBodyText] = useState('');
   const [bodySaving, setBodySaving] = useState(false);
@@ -119,7 +120,14 @@ export default function Scenes() {
   useEffect(() => {
     load();
     api.characters.list().then(r => setCharacters(r.characters));
+    api.episodes.list().then(r => setEpisodes(r.episodes)).catch(() => setEpisodes([]));
   }, []);
+
+  const episodeLabel = (episodeId: string | null) => {
+    if (!episodeId) return null;
+    const ep = episodes.find(e => e.id === episodeId);
+    return ep ? `第${ep.episode_number ?? '?'}話` : null;
+  };
 
   const openDetail = async (scene: Scene) => {
     setDetailScene(scene);
@@ -135,6 +143,7 @@ export default function Scenes() {
       disclosure_notes: scene.disclosure_notes ?? '',
       synopsis: scene.synopsis ?? '',
       reader_goal: scene.reader_goal ?? '',
+      episode_id: scene.episode_id ?? '',
     });
     const r = await api.sceneCharacters.list(scene.id);
     setSceneChars(r.scene_characters);
@@ -176,6 +185,7 @@ export default function Scenes() {
         disclosure_notes: editSceneForm.disclosure_notes || null,
         synopsis: editSceneForm.synopsis || null,
         reader_goal: editSceneForm.reader_goal || null,
+        episode_id: editSceneForm.episode_id || null,
       };
       await api.scenes.update(detailScene.id, data);
       const updated = { ...detailScene, ...data };
@@ -279,6 +289,9 @@ export default function Scenes() {
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       {s.narrative_order != null && (
                         <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded shrink-0">#{s.narrative_order}</span>
+                      )}
+                      {episodeLabel(s.episode_id) && (
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded shrink-0">{episodeLabel(s.episode_id)}</span>
                       )}
                       <span className="font-medium text-gray-900 truncate">{s.title}</span>
                     </div>
@@ -405,6 +418,15 @@ export default function Scenes() {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">物語上の順番</label>
                   <input type="number" value={editSceneForm.narrative_order} onChange={e => setEditSceneForm({...editSceneForm, narrative_order: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">所属する話</label>
+                  <select value={editSceneForm.episode_id} onChange={e => setEditSceneForm({...editSceneForm, episode_id: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                    <option value="">（未所属）</option>
+                    {episodes.map(ep => (
+                      <option key={ep.id} value={ep.id}>第{ep.episode_number ?? '?'}話 {ep.title}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">場所</label>

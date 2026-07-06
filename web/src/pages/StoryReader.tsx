@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, Scene } from '../api';
+import { api, Episode, Scene } from '../api';
 
 type Mode = 'full' | 'single';
 
@@ -44,20 +44,32 @@ export default function StoryReader() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+
   useEffect(() => {
-    api.scenes.list().then(res => {
+    Promise.all([api.scenes.list(), api.episodes.list().catch(() => ({ episodes: [] as Episode[] }))]).then(([res, eps]) => {
       const sorted = [...res.scenes].sort((a, b) => {
         const ao = a.narrative_order ?? 9999;
         const bo = b.narrative_order ?? 9999;
         return ao - bo;
       });
       setScenes(sorted);
+      setEpisodes(eps.episodes);
       setLoading(false);
     }).catch((e: Error) => {
       setError(e.message);
       setLoading(false);
     });
   }, []);
+
+  // 直前のシーンと話が変わる位置に「第N話」見出しを出す
+  const episodeHeading = (scene: Scene, prev: Scene | null): string | null => {
+    if (!scene.episode_id) return null;
+    if (prev && prev.episode_id === scene.episode_id) return null;
+    const ep = episodes.find(e => e.id === scene.episode_id);
+    if (!ep) return null;
+    return `第${ep.episode_number ?? '?'}話　${ep.title}`;
+  };
 
   const scrollToScene = (id: string) => {
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -80,10 +92,14 @@ export default function StoryReader() {
   const totalChars = scenes.reduce((sum, s) => sum + (s.body?.length ?? 0), 0);
 
   const downloadTxt = () => {
-    const text = scenes
-      .filter(s => s.body)
-      .map(s => `${s.title}\n\n${s.body}`)
-      .join('\n\n\n');
+    const written = scenes.filter(s => s.body);
+    const parts: string[] = [];
+    written.forEach((s, i) => {
+      const heading = episodeHeading(s, i > 0 ? written[i - 1] : null);
+      if (heading) parts.push(`■ ${heading}`);
+      parts.push(`${s.title}\n\n${s.body}`);
+    });
+    const text = parts.join('\n\n\n');
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -153,21 +169,29 @@ export default function StoryReader() {
 
           {/* 全シーン本文 */}
           <div className="space-y-16">
-            {scenes.map((s, i) => (
-              <section
-                key={s.id}
-                ref={el => { sectionRefs.current[s.id] = el; }}
-                className="scroll-mt-8"
-              >
-                <div className="flex items-baseline gap-3 mb-4 border-b border-gray-200 pb-3">
-                  <span className="text-xs text-gray-400 tabular-nums w-6 text-right">{i + 1}</span>
-                  <h2 className="text-lg font-bold text-gray-900">{s.title}</h2>
-                </div>
-                <div className="pl-9">
-                  <SceneBody scene={s} />
-                </div>
-              </section>
-            ))}
+            {scenes.map((s, i) => {
+              const heading = episodeHeading(s, i > 0 ? scenes[i - 1] : null);
+              return (
+                <section
+                  key={s.id}
+                  ref={el => { sectionRefs.current[s.id] = el; }}
+                  className="scroll-mt-8"
+                >
+                  {heading && (
+                    <h2 className="text-xl font-bold text-indigo-900 bg-indigo-50 rounded-lg px-4 py-3 mb-8">
+                      {heading}
+                    </h2>
+                  )}
+                  <div className="flex items-baseline gap-3 mb-4 border-b border-gray-200 pb-3">
+                    <span className="text-xs text-gray-400 tabular-nums w-6 text-right">{i + 1}</span>
+                    <h2 className="text-lg font-bold text-gray-900">{s.title}</h2>
+                  </div>
+                  <div className="pl-9">
+                    <SceneBody scene={s} />
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </div>
       )}

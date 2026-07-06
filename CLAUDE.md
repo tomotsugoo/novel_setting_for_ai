@@ -62,7 +62,7 @@ Workers Builds の設定:
 
 | ツール | `action` | 主な引数 |
 |---|---|---|
-| `manage_scene` | `create` / `update` / `delete` / `save_body` / `insert_at` / `list_revisions` / `restore_revision` / `foreshadow_list` / `foreshadow_set` / `foreshadow_delete` | create: `id`,`title`… ／ その他: `scene_id`（save_bodyは `body`、insert_atは `narrative_order`、restore_revisionは `revision_id` 必須）。update/createで `synopsis`（あらすじ）・`reader_goal`（読者への狙い）も設定可。save_bodyは上書き前の本文を自動で履歴退避（シーンごと直近20件）。insert_atは指定位置に挿入して全体を1..Nでリナンバー。foreshadow系は伏線管理（`foreshadowings`テーブル、status: open/resolved/dropped、check_all_consistencyが回収漏れを警告） |
+| `manage_scene` | `create` / `update` / `delete` / `save_body` / `insert_at` / `list_revisions` / `restore_revision` / `foreshadow_list` / `foreshadow_set` / `foreshadow_delete` / `episode_list` / `episode_set` / `episode_delete` | create: `id`,`title`… ／ その他: `scene_id`（save_bodyは `body`、insert_atは `narrative_order`、restore_revisionは `revision_id` 必須）。update/createで `synopsis`（あらすじ）・`reader_goal`（読者への狙い）・`episode_id`（所属する話）も設定可。save_bodyは上書き前の本文を自動で履歴退避（シーンごと直近20件）。insert_atは指定位置に挿入して全体を1..Nでリナンバー。foreshadow系は伏線管理（`foreshadowings`テーブル、status: open/resolved/dropped、check_all_consistencyが回収漏れを警告）。episode系は話（Web連載の投稿単位・複数シーンの束、`episodes`テーブル、hook=引き、status: draft/published）の管理。get_scene_contextのepisodeに話情報＋「最後のシーンなら引きを入れる」指示が含まれる |
 | `manage_character` | `create` / `update` / `delete` / `add_state` / `add_swap` / `update_swap` / `delete_swap` | create・update・delete: `id` ／ add_state: `character_id`,`scene_id`,`appearance`,`status`,`notes` ／ swap系: `swap_id`,`from_character_id`(自我),`to_character_id`(身体),`swapped_at`… |
 | `manage_relationship` | `create` / `update` / `delete` | create: `character_id_a`,`character_id_b`,`relation_type` ／ update・delete: `id` |
 | `manage_world_rule` | `create` / `update` / `delete` / `style_set` / `style_delete` | create: `id`,`category`,`rule` ／ update・delete: `id` ／ style系: 執筆スタイル（文体・描写の流儀、`style_guides`テーブル）。style_set: `category`,`rule`必須（`title`,`sort_order`任意、`id`省略で新規）。スタイルは `get_scene_context` の `style_guide` に常時含まれる |
@@ -74,8 +74,9 @@ Workers Builds の設定:
 - `GET/POST /api/rules`、`DELETE /api/rules/:id`
 - `GET/POST /api/styles`、`PUT/DELETE /api/styles/:id`（執筆スタイル。テーブル `style_guides` は初回アクセス時に自動作成）
 - `GET/POST /api/foreshadowings`、`PUT/DELETE /api/foreshadowings/:id`（伏線管理）
+- `GET/POST /api/episodes`、`PUT/DELETE /api/episodes/:id`（話＝エピソード管理。GETは所属シーン・合計文字数つき。DELETEは所属シーンの紐付けだけ外す）
 
-※ スキーマ拡張（`scenes.synopsis`/`scenes.reader_goal`/`characters.speech_style`/`foreshadowings`テーブル）は `ensureSchemaExtensions()` が初回アクセス時に自動適用する（isolateごとに1回）。POST /api/migrate の手動実行は不要。
+※ スキーマ拡張（`scenes.synopsis`/`scenes.reader_goal`/`scenes.episode_id`/`characters.speech_style`/`foreshadowings`/`episodes`テーブル）は `ensureSchemaExtensions()` が初回アクセス時に自動適用する（isolateごとに1回）。POST /api/migrate の手動実行は不要。
 - `GET/POST /api/scene_characters/:sceneId`、`DELETE /api/scene_characters/:sceneId/:characterId`
 - `GET/POST /api/consciousness_swaps`、`PUT/DELETE /api/consciousness_swaps/:id`
 - `GET /api/scene_revisions/:sceneId`（本文履歴一覧）、`DELETE /api/scene_revisions/:id`

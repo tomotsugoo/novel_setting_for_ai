@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 
 const TOOLS = [
   {
@@ -91,11 +91,11 @@ const TOOLS = [
   },
   {
     name: "manage_scene",
-    description: "シーンの作成・更新・削除・本文保存・並べ替え・本文履歴・伏線をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須・synopsis/reader_goalもここで設定）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・上書き前の本文は自動で履歴に退避）、insert_at=シーンを指定話数の位置へ移動し全体を1..Nで自動リナンバー（scene_id,narrative_order必須）、list_revisions=本文履歴一覧（scene_id必須）、restore_revision=履歴から本文復元（revision_id必須）、foreshadow_list=伏線一覧、foreshadow_set=伏線の作成/更新（新規はtitle必須・更新はforeshadow_id必須）、foreshadow_delete=伏線削除（foreshadow_id必須）。",
+    description: "シーンの作成・更新・削除・本文保存・並べ替え・本文履歴・伏線・話（エピソード）をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須・synopsis/reader_goal/episode_idもここで設定）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・上書き前の本文は自動で履歴に退避）、insert_at=シーンを指定順序の位置へ移動し全体を1..Nで自動リナンバー（scene_id,narrative_order必須）、list_revisions=本文履歴一覧（scene_id必須）、restore_revision=履歴から本文復元（revision_id必須）、foreshadow_list/foreshadow_set/foreshadow_delete=伏線管理、episode_list=話一覧（所属シーン・合計文字数つき）、episode_set=話の作成/更新（新規はtitle必須・更新はepisode_id必須）、episode_delete=話削除（episode_id必須・シーンは残り紐付けだけ外れる）。話＝Web連載の投稿単位（複数シーンの束）。シーンの話への所属は update の episode_id で設定。",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision / foreshadow_list / foreshadow_set / foreshadow_delete" },
+        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision / foreshadow_list / foreshadow_set / foreshadow_delete / episode_list / episode_set / episode_delete" },
         id: { type: "string", description: "シーンID（action=create時）" },
         scene_id: { type: "string", description: "シーンID（update/delete/save_body/insert_at/list_revisions時）" },
         title: { type: "string", description: "タイトル（シーンまたは伏線の要約）" },
@@ -112,9 +112,12 @@ const TOOLS = [
         detail: { type: "string", description: "伏線の詳細（foreshadow_set時・任意）" },
         planted_scene_id: { type: "string", description: "伏線を張るシーンID（foreshadow_set時・任意）" },
         payoff_scene_id: { type: "string", description: "伏線を回収する予定のシーンID（foreshadow_set時・任意）" },
-        status: { type: "string", description: "伏線の状態: open（未回収）/ resolved（回収済み）/ dropped（破棄）（foreshadow_set時）" },
+        status: { type: "string", description: "状態。伏線: open（未回収）/ resolved（回収済み）/ dropped（破棄） ／ 話: draft（下書き）/ published（公開済み）" },
         reader_effect: { type: "string", description: "回収時に読者に感じさせたい効果（foreshadow_set時・任意）" },
-        notes: { type: "string", description: "伏線のメモ（foreshadow_set時・任意）" },
+        notes: { type: "string", description: "メモ（foreshadow_set / episode_set時・任意）" },
+        episode_id: { type: "string", description: "話ID（update時=シーンの所属話・nullで解除 ／ episode_set更新・episode_delete時=対象の話）" },
+        episode_number: { type: "number", description: "話数（episode_set時。第N話のN）" },
+        hook: { type: "string", description: "この話の引き＝末尾で読者を次話へ引っ張る要素（episode_set時・任意）" },
       },
       required: ["action"],
     },
@@ -195,7 +198,17 @@ async function ensureSchemaExtensions(db: D1Database): Promise<void> {
   for (const sql of [
     "ALTER TABLE scenes ADD COLUMN synopsis TEXT",
     "ALTER TABLE scenes ADD COLUMN reader_goal TEXT",
+    "ALTER TABLE scenes ADD COLUMN episode_id TEXT",
     "ALTER TABLE characters ADD COLUMN speech_style TEXT",
+    `CREATE TABLE IF NOT EXISTS episodes (
+      id TEXT PRIMARY KEY,
+      episode_number INTEGER,
+      title TEXT NOT NULL,
+      hook TEXT,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT
+    )`,
     `CREATE TABLE IF NOT EXISTS foreshadowings (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -292,7 +305,7 @@ async function listCharacters(db: D1Database): Promise<unknown> {
 
 async function listScenes(db: D1Database): Promise<unknown> {
   const result = await db.prepare(
-    "SELECT id, title, narrative_order, story_time, location, is_written FROM scenes ORDER BY narrative_order ASC, story_time ASC"
+    "SELECT id, title, narrative_order, story_time, location, is_written, episode_id FROM scenes ORDER BY narrative_order ASC, story_time ASC"
   ).all();
   return { scenes: result.results };
 }
@@ -300,7 +313,11 @@ async function listScenes(db: D1Database): Promise<unknown> {
 async function listOverview(db: D1Database): Promise<unknown> {
   const scenes = (await listScenes(db)) as { scenes: unknown[] };
   const characters = (await listCharacters(db)) as { characters: unknown[] };
-  return { scenes: scenes.scenes, characters: characters.characters };
+  const episodes = (await listEpisodes(db)).map(ep => ({
+    id: ep.id, episode_number: ep.episode_number, title: ep.title, status: ep.status,
+    scene_count: ep.scene_count, written_count: ep.written_count, total_chars: ep.total_chars,
+  }));
+  return { episodes, scenes: scenes.scenes, characters: characters.characters };
 }
 
 function getHelp(): unknown {
@@ -330,6 +347,9 @@ function getHelp(): unknown {
         foreshadow_list: "伏線一覧（張った/回収シーン名・状態つき）",
         foreshadow_set: "伏線の作成/更新。新規は title 必須（detail/planted_scene_id/payoff_scene_id/status/reader_effect/notes 任意）。更新は foreshadow_id 必須。status: open=未回収 / resolved=回収済み / dropped=破棄",
         foreshadow_delete: "伏線削除。foreshadow_id 必須",
+        episode_list: "話（エピソード）一覧。所属シーン・執筆済み数・合計文字数つき",
+        episode_set: "話の作成/更新。新規は title 必須（episode_number/hook=引き/notes/status 任意）。更新は episode_id 必須。status: draft=下書き / published=公開済み",
+        episode_delete: "話削除。episode_id 必須（所属シーンは削除されず紐付けだけ外れる）",
       },
       manage_character: {
         create: "新規キャラ作成。id・name 必須",
@@ -364,6 +384,7 @@ function getHelp(): unknown {
       "本文を書く前に、そのシーンの writing_direction（synopsis=出来事、reader_goal=読者に生じさせたい効果）を確認する。未設定なら manage_scene{action:'update', synopsis, reader_goal} で先に設計するとよい。reader_goal は本文に直接書かず、効果が生まれる構成にする。",
       "伏線は manage_scene の foreshadow_set/foreshadow_list/foreshadow_delete で管理。get_scene_context にそのシーンで張る伏線・回収する伏線・未回収一覧が含まれる。回収を書いたら status を resolved に更新する。check_all_consistency が回収漏れを警告する。",
       "キャラの口調（一人称・口癖・語尾）は characters.speech_style に保存でき、get_scene_context の登場キャラ情報に含まれる。セリフはこれに従う。",
+      "話（エピソード）＝Web連載の投稿単位（1話2,000〜4,000字目安・複数シーンの束）。manage_scene の episode_set で話を作り、update{scene_id, episode_id} でシーンを所属させる。get_scene_context の episode に話タイトル・引き（hook）・話内の位置が含まれ、話の最後のシーンでは引きを入れるよう指示される。",
     ],
   };
 }
@@ -579,8 +600,37 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     note: "plant_in_this_scene=このシーンで張る伏線（さりげなく仕込む）。payoff_in_this_scene=このシーンで回収する伏線（回収を書いたら manage_scene{action:'foreshadow_set', foreshadow_id, status:'resolved'} で更新）。open_foreshadows=未回収の伏線一覧（矛盾する記述をしないこと）",
   } : null;
 
+  // 所属する話（エピソード）情報
+  let episodeInfo: Record<string, unknown> | null = null;
+  const episodeId = scene.episode_id as string | null;
+  if (episodeId) {
+    const ep = await db.prepare("SELECT * FROM episodes WHERE id=?").bind(episodeId).first() as Record<string, unknown> | null;
+    if (ep) {
+      const epScenes = (
+        await db.prepare("SELECT id, title, narrative_order, is_written, length(COALESCE(body,'')) as char_count FROM scenes WHERE episode_id=? ORDER BY narrative_order ASC").bind(episodeId).all()
+      ).results as Array<Record<string, unknown>>;
+      const idx = epScenes.findIndex(s => s.id === args.scene_id);
+      const isLast = idx === epScenes.length - 1;
+      episodeInfo = {
+        id: ep.id,
+        episode_number: ep.episode_number,
+        title: ep.title,
+        status: ep.status,
+        hook: ep.hook,
+        notes: ep.notes,
+        scenes_in_episode: epScenes,
+        position_in_episode: idx >= 0 ? `${idx + 1}/${epScenes.length}` : null,
+        total_chars: epScenes.reduce((sum, s) => sum + (s.char_count as number), 0),
+        note: isLast
+          ? "このシーンはこの話の最後のシーン。話の終わりには「引き」（hook）を必ず入れること"
+          : "この話にはまだ後続シーンがある。話の途中なので引きは不要だが、次シーンへ自然に繋ぐこと",
+      };
+    }
+  }
+
   return {
     scene,
+    episode: episodeInfo,
     writing_direction: writingDirection,
     protagonist_status: protagonistStatus,
     characters_in_scene: charactersInScene,
@@ -660,7 +710,7 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   const issues: { severity: "error" | "warning" | "info"; category: string; message: string }[] = [];
 
   const characters = (await db.prepare("SELECT id, name FROM characters").all()).results as Array<{ id: string; name: string }>;
-  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id, is_written FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null; is_written: number }>;
+  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id, is_written, episode_id FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null; is_written: number; episode_id: string | null }>;
   const swaps = (await db.prepare("SELECT * FROM consciousness_swaps ORDER BY swapped_at").all()).results as Array<{ id: string; from_character_id: string; to_character_id: string; swapped_at: string; resolved_at: string | null; trigger_event: string | null; notes: string | null }>;
   const sceneChars = (await db.prepare("SELECT scene_id, character_id, is_pov FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string; is_pov: number }>;
 
@@ -785,6 +835,36 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
     issues.push({ severity: "info", category: "伏線", message: `未回収の伏線が${openCount}件あります: ${foreshadows.filter(f => f.status === 'open').map(f => `「${f.title}」`).join(", ")}` });
   }
 
+  // 10. 話（エピソード）の整合性
+  const episodes = await listEpisodes(db);
+  const epNumbers: Record<number, string[]> = {};
+  for (const ep of episodes) {
+    if (ep.episode_number != null) {
+      const n = ep.episode_number as number;
+      (epNumbers[n] = epNumbers[n] ?? []).push(ep.title as string);
+    }
+    if ((ep.scene_count as number) === 0) {
+      issues.push({ severity: "info", category: "話", message: `第${ep.episode_number ?? '?'}話「${ep.title}」にはシーンが1つも紐付いていません` });
+    }
+    // 話の中でシーンのnarrative_orderが連続しているか（間に別の話のシーンが挟まっていないか）
+    const epScenes = ep.scenes as Array<{ narrative_order: number | null; title: string }>;
+    const orders = epScenes.map(s => s.narrative_order).filter((o): o is number => o != null).sort((a, b) => a - b);
+    if (orders.length >= 2 && orders[orders.length - 1] - orders[0] + 1 !== orders.length) {
+      issues.push({ severity: "warning", category: "話", message: `第${ep.episode_number ?? '?'}話「${ep.title}」のシーンの執筆順が飛び飛びです（間に別の話のシーンが挟まっています）: order ${orders.join(', ')}` });
+    }
+  }
+  for (const [n, titles] of Object.entries(epNumbers)) {
+    if (titles.length > 1) {
+      issues.push({ severity: "error", category: "話", message: `話数 ${n} が重複しています: ${titles.map(t => `「${t}」`).join(", ")}` });
+    }
+  }
+  if (episodes.length > 0) {
+    const unassigned = scenes.filter(s => !s.episode_id);
+    if (unassigned.length > 0) {
+      issues.push({ severity: "info", category: "話", message: `どの話にも紐付いていないシーンが${unassigned.length}件あります: ${unassigned.map(s => `「${s.title}」`).join(", ")}` });
+    }
+  }
+
   const errors = issues.filter(i => i.severity === "error");
   const warnings = issues.filter(i => i.severity === "warning");
   const infos = issues.filter(i => i.severity === "info");
@@ -902,9 +982,13 @@ async function insertSceneAt(db: D1Database, args: { scene_id: string; narrative
   return { ok: true, scene_id: scene.id, title: scene.title, new_order: pos, renumbered };
 }
 
-async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null; synopsis?: string | null; reader_goal?: string | null }): Promise<unknown> {
+async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null; synopsis?: string | null; reader_goal?: string | null; episode_id?: string | null }): Promise<unknown> {
   const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  if ('episode_id' in args && args.episode_id) {
+    const ep = await db.prepare("SELECT id FROM episodes WHERE id=?").bind(args.episode_id).first();
+    if (!ep) return { error: `Episode '${args.episode_id}' not found` };
+  }
   const hasStoryTime = 'story_time' in args;
   const hasOrder = 'narrative_order' in args;
   const hasIdentity = 'protagonist_identity_id' in args;
@@ -917,7 +1001,8 @@ async function updateScene(db: D1Database, args: { scene_id: string; title?: str
       disclosure_notes=COALESCE(?,disclosure_notes),
       protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END,
       synopsis=CASE WHEN ?=1 THEN ? ELSE synopsis END,
-      reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END
+      reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END,
+      episode_id=CASE WHEN ?=1 THEN ? ELSE episode_id END
      WHERE id=?`
   ).bind(
     args.title ?? null,
@@ -928,6 +1013,7 @@ async function updateScene(db: D1Database, args: { scene_id: string; title?: str
     hasIdentity ? 1 : 0, args.protagonist_identity_id ?? null,
     'synopsis' in args ? 1 : 0, args.synopsis ?? null,
     'reader_goal' in args ? 1 : 0, args.reader_goal ?? null,
+    'episode_id' in args ? 1 : 0, args.episode_id ?? null,
     args.scene_id
   ).run();
   return { ok: true, scene_id: args.scene_id };
@@ -1098,6 +1184,72 @@ async function deleteWorldRule(db: D1Database, args: { id: string }): Promise<un
   const existing = await db.prepare("SELECT id FROM world_rules WHERE id=?").bind(args.id).first();
   if (!existing) return { error: `World rule '${args.id}' not found` };
   await db.prepare("DELETE FROM world_rules WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
+}
+
+// 話（エピソード）管理。Web連載の投稿単位で、複数シーンをまとめる。
+async function listEpisodes(db: D1Database): Promise<Array<Record<string, unknown>>> {
+  try {
+    const episodes = (
+      await db.prepare("SELECT * FROM episodes ORDER BY COALESCE(episode_number, 9999), created_at").all()
+    ).results as Array<Record<string, unknown>>;
+    const scenes = (
+      await db.prepare("SELECT id, title, narrative_order, is_written, episode_id, length(COALESCE(body,'')) as char_count FROM scenes ORDER BY narrative_order ASC").all()
+    ).results as Array<Record<string, unknown>>;
+    return episodes.map(ep => {
+      const epScenes = scenes.filter(s => s.episode_id === ep.id);
+      return {
+        ...ep,
+        scenes: epScenes.map(s => ({ id: s.id, title: s.title, narrative_order: s.narrative_order, is_written: s.is_written, char_count: s.char_count })),
+        scene_count: epScenes.length,
+        written_count: epScenes.filter(s => s.is_written === 1).length,
+        total_chars: epScenes.reduce((sum, s) => sum + (s.char_count as number), 0),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function setEpisode(db: D1Database, args: { id?: string; episode_number?: number | null; title?: string; hook?: string | null; notes?: string | null; status?: string }): Promise<unknown> {
+  if (args.status && !['draft', 'published'].includes(args.status)) {
+    return { error: "status は draft（下書き）/ published（公開済み）のいずれかです" };
+  }
+  const existing = args.id
+    ? await db.prepare("SELECT id FROM episodes WHERE id=?").bind(args.id).first()
+    : null;
+  if (existing) {
+    await db.prepare(
+      `UPDATE episodes SET
+        episode_number=CASE WHEN ?=1 THEN ? ELSE episode_number END,
+        title=COALESCE(?,title),
+        hook=CASE WHEN ?=1 THEN ? ELSE hook END,
+        notes=CASE WHEN ?=1 THEN ? ELSE notes END,
+        status=COALESCE(?,status)
+       WHERE id=?`
+    ).bind(
+      'episode_number' in args ? 1 : 0, args.episode_number ?? null,
+      args.title ?? null,
+      'hook' in args ? 1 : 0, args.hook ?? null,
+      'notes' in args ? 1 : 0, args.notes ?? null,
+      args.status ?? null,
+      args.id
+    ).run();
+    return { ok: true, id: args.id, updated: true };
+  }
+  if (!args.title) return { error: "新規作成には title（話のタイトル）が必須です" };
+  const id = args.id ?? crypto.randomUUID();
+  await db.prepare(
+    "INSERT INTO episodes (id, episode_number, title, hook, notes, status, created_at) VALUES (?,?,?,?,?,?,?)"
+  ).bind(id, args.episode_number ?? null, args.title, args.hook ?? null, args.notes ?? null, args.status ?? 'draft', new Date().toISOString()).run();
+  return { ok: true, id, created: true };
+}
+
+async function deleteEpisode(db: D1Database, args: { id: string }): Promise<unknown> {
+  if (!args.id) return { error: "id は必須です" };
+  // 所属シーンは削除せず、話への紐付けだけ外す
+  await db.prepare("UPDATE scenes SET episode_id=NULL WHERE episode_id=?").bind(args.id).run();
+  await db.prepare("DELETE FROM episodes WHERE id=?").bind(args.id).run();
   return { ok: true, id: args.id };
 }
 
@@ -1289,6 +1441,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
                 if ('protagonist_identity_id' in a) upd.protagonist_identity_id = a.protagonist_identity_id as string | null;
                 if ('synopsis' in a) upd.synopsis = a.synopsis as string | null;
                 if ('reader_goal' in a) upd.reader_goal = a.reader_goal as string | null;
+                if ('episode_id' in a) upd.episode_id = a.episode_id as string | null;
                 toolResult = await updateScene(env.DB, upd);
                 break;
               }
@@ -1323,8 +1476,22 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "foreshadow_delete":
                 toolResult = await deleteForeshadow(env.DB, { id: (a.foreshadow_id ?? a.id) as string });
                 break;
+              case "episode_list":
+                toolResult = { episodes: await listEpisodes(env.DB) };
+                break;
+              case "episode_set": {
+                const ep: Parameters<typeof setEpisode>[1] = { id: (a.episode_id ?? a.id) as string | undefined, title: a.title as string | undefined, status: a.status as string | undefined };
+                if ('episode_number' in a) ep.episode_number = a.episode_number as number | null;
+                if ('hook' in a) ep.hook = a.hook as string | null;
+                if ('notes' in a) ep.notes = a.notes as string | null;
+                toolResult = await setEpisode(env.DB, ep);
+                break;
+              }
+              case "episode_delete":
+                toolResult = await deleteEpisode(env.DB, { id: (a.episode_id ?? a.id) as string });
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision/foreshadow_list/foreshadow_set/foreshadow_delete)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision/foreshadow_list/foreshadow_set/foreshadow_delete/episode_list/episode_set/episode_delete)` } };
             }
             break;
           }
@@ -1539,7 +1706,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null;synopsis?:string|null;reader_goal?:string|null};
+        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null;synopsis?:string|null;reader_goal?:string|null;episode_id?:string|null};
         const hasIdentity = 'protagonist_identity_id' in (body as object);
         const hasBody = 'body' in (body as object);
         if (hasBody) {
@@ -1547,7 +1714,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           await archiveBodyRevision(env.DB, id, cur?.body ?? null, body.body ?? null);
         }
         await env.DB.prepare(
-          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END, synopsis=CASE WHEN ?=1 THEN ? ELSE synopsis END, reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END WHERE id=?"
+          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END, synopsis=CASE WHEN ?=1 THEN ? ELSE synopsis END, reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END, episode_id=CASE WHEN ?=1 THEN ? ELSE episode_id END WHERE id=?"
         ).bind(
           body.title ?? null, body.story_time ?? null, body.narrative_order ?? null,
           body.location ?? null, body.disclosure_notes ?? null, body.is_written ?? null,
@@ -1555,6 +1722,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           hasBody ? 1 : 0, body.body ?? null,
           'synopsis' in body ? 1 : 0, body.synopsis ?? null,
           'reader_goal' in body ? 1 : 0, body.reader_goal ?? null,
+          'episode_id' in body ? 1 : 0, body.episode_id ?? null,
           id
         ).run();
         return json({ ok: true });
@@ -1746,6 +1914,24 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    // 話（エピソード）管理
+    if (resource === 'episodes') {
+      if (method === 'GET') {
+        return json({ episodes: await listEpisodes(env.DB) });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as Record<string, unknown>;
+        return json(await setEpisode(env.DB, body as Parameters<typeof setEpisode>[1]));
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as Record<string, unknown>;
+        return json(await setEpisode(env.DB, { ...(body as Parameters<typeof setEpisode>[1]), id }));
+      }
+      if (method === 'DELETE' && id) {
+        return json(await deleteEpisode(env.DB, { id }));
+      }
+    }
+
     // 伏線管理
     if (resource === 'foreshadowings') {
       if (method === 'GET') {
@@ -1820,7 +2006,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'export' && method === 'GET') {
-      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars', 'style_guides', 'foreshadowings'];
+      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars', 'style_guides', 'foreshadowings', 'episodes'];
       const data: Record<string, unknown> = {};
       for (const tbl of tables) {
         try {

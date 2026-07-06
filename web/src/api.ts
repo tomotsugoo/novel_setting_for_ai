@@ -74,6 +74,12 @@ export const api = {
     update: (id: string, data: Partial<Relationship>) => apiFetch(`/api/relationships/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/relationships/${id}`, { method: 'DELETE' }),
   },
+  episodes: {
+    list: () => apiFetch<{episodes: Episode[]}>('/api/episodes'),
+    create: (data: Partial<Episode>) => apiFetch('/api/episodes', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Episode>) => apiFetch(`/api/episodes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/episodes/${id}`, { method: 'DELETE' }),
+  },
   foreshadowings: {
     list: () => apiFetch<{foreshadowings: Foreshadowing[]}>('/api/foreshadowings'),
     create: (data: Partial<Foreshadowing>) => apiFetch('/api/foreshadowings', { method: 'POST', body: JSON.stringify(data) }),
@@ -105,7 +111,18 @@ export interface Scene {
   timeline_branch_id: string | null; disclosure_notes: string | null;
   is_written: number; protagonist_identity_id: string | null;
   body: string | null; synopsis: string | null; reader_goal: string | null;
-  created_at: string;
+  episode_id: string | null; created_at: string;
+}
+export interface EpisodeScene {
+  id: string; title: string; narrative_order: number | null;
+  is_written: number; char_count: number;
+}
+export interface Episode {
+  id: string; episode_number: number | null; title: string;
+  hook: string | null; notes: string | null;
+  status: 'draft' | 'published'; created_at: string | null;
+  scenes?: EpisodeScene[]; scene_count?: number;
+  written_count?: number; total_chars?: number;
 }
 export interface Foreshadowing {
   id: string; title: string; detail: string | null;
