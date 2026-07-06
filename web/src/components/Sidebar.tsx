@@ -7,6 +7,7 @@ const navItems = [
   { to: "/story", label: "本文閲覧" },
   { to: "/timeline", label: "タイムライン" },
   { to: "/rules", label: "世界ルール" },
+  { to: "/style", label: "文体・描写" },
   { to: "/consciousness", label: "意識の入れ替わり" },
   { to: "/relationships", label: "関係性" },
   { to: "/relation-graph", label: "相関図" },

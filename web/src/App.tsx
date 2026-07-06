@@ -11,6 +11,7 @@ import ConsciousnessSwaps from "./pages/ConsciousnessSwaps";
 import Relationships from "./pages/Relationships";
 import RelationGraph from "./pages/RelationGraph";
 import StoryReader from "./pages/StoryReader";
+import StyleGuidePage from "./pages/StyleGuidePage";
 import Login from "./pages/Login";
 import { isAuthenticated } from "./auth";
 
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/scenes" element={<Scenes />} />
               <Route path="/timeline" element={<Timeline />} />
               <Route path="/rules" element={<Rules />} />
+              <Route path="/style" element={<StyleGuidePage />} />
               <Route path="/consciousness" element={<ConsciousnessSwaps />} />
               <Route path="/relationships" element={<Relationships />} />
               <Route path="/relation-graph" element={<RelationGraph />} />

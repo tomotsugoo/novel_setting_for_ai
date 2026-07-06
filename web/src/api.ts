@@ -74,6 +74,12 @@ export const api = {
     update: (id: string, data: Partial<Relationship>) => apiFetch(`/api/relationships/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/relationships/${id}`, { method: 'DELETE' }),
   },
+  styles: {
+    list: () => apiFetch<{styles: StyleGuide[]}>('/api/styles'),
+    create: (data: Partial<StyleGuide>) => apiFetch('/api/styles', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<StyleGuide>) => apiFetch(`/api/styles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/styles/${id}`, { method: 'DELETE' }),
+  },
   sceneRevisions: {
     list: (sceneId: string) => apiFetch<{revisions: SceneBodyRevision[]}>(`/api/scene_revisions/${sceneId}`),
     delete: (id: string) => apiFetch(`/api/scene_revisions/${id}`, { method: 'DELETE' }),
@@ -108,6 +114,10 @@ export interface ConsciousnessSwap {
   to_character_id: string; to_name?: string;
   swapped_at: string; resolved_at: string | null; ego_recovered_at: string | null;
   trigger_event: string | null; notes: string | null;
+}
+export interface StyleGuide {
+  id: string; category: string; title: string | null;
+  content: string; sort_order: number | null;
 }
 export interface SceneBodyRevision {
   id: string; scene_id: string; saved_at: string;

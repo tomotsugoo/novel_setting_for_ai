@@ -65,13 +65,14 @@ Workers Builds の設定:
 | `manage_scene` | `create` / `update` / `delete` / `save_body` / `insert_at` / `list_revisions` / `restore_revision` | create: `id`,`title`… ／ その他: `scene_id`（save_bodyは `body`、insert_atは `narrative_order`、restore_revisionは `revision_id` 必須）。save_bodyは上書き前の本文を自動で履歴退避（シーンごと直近20件）。insert_atは指定位置に挿入して全体を1..Nでリナンバー（重複・欠番解消） |
 | `manage_character` | `create` / `update` / `delete` / `add_state` / `add_swap` / `update_swap` / `delete_swap` | create・update・delete: `id` ／ add_state: `character_id`,`scene_id`,`appearance`,`status`,`notes` ／ swap系: `swap_id`,`from_character_id`(自我),`to_character_id`(身体),`swapped_at`… |
 | `manage_relationship` | `create` / `update` / `delete` | create: `character_id_a`,`character_id_b`,`relation_type` ／ update・delete: `id` |
-| `manage_world_rule` | `create` / `update` / `delete` | create: `id`,`category`,`rule` ／ update・delete: `id` |
+| `manage_world_rule` | `create` / `update` / `delete` / `style_set` / `style_delete` | create: `id`,`category`,`rule` ／ update・delete: `id` ／ style系: 執筆スタイル（文体・描写の流儀、`style_guides`テーブル）。style_set: `category`,`rule`必須（`title`,`sort_order`任意、`id`省略で新規）。スタイルは `get_scene_context` の `style_guide` に常時含まれる |
 
 ## REST API（`mcp-server/src/index.ts` の `handleRestApi`）
 
 - `GET/POST /api/characters`、`PUT /api/characters/:id`
 - `GET/POST /api/scenes`、`PUT /api/scenes/:id`
 - `GET/POST /api/rules`、`DELETE /api/rules/:id`
+- `GET/POST /api/styles`、`PUT/DELETE /api/styles/:id`（執筆スタイル。テーブル `style_guides` は初回アクセス時に自動作成）
 - `GET/POST /api/scene_characters/:sceneId`、`DELETE /api/scene_characters/:sceneId/:characterId`
 - `GET/POST /api/consciousness_swaps`、`PUT/DELETE /api/consciousness_swaps/:id`
 - `GET /api/scene_revisions/:sceneId`（本文履歴一覧）、`DELETE /api/scene_revisions/:id`

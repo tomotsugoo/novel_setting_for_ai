@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.9.0";
+const VERSION = "0.10.0";
 
 const TOOLS = [
   {
@@ -160,15 +160,17 @@ const TOOLS = [
   },
   {
     name: "manage_world_rule",
-    description: "世界設定ルールの作成・更新・削除をまとめて行う。actionで操作を指定する。create=新規登録（id,category,rule必須）、update=更新（id必須）、delete=削除（id必須）。能力名・制約・設定用語などをカテゴリ別に管理する。",
+    description: "世界設定ルールと執筆スタイル（文体・描写の流儀）の管理をまとめて行う。actionで操作を指定する。create=世界ルール新規登録（id,category,rule必須）、update=世界ルール更新（id必須）、delete=世界ルール削除（id必須）、style_set=執筆スタイル登録/上書き（category,rule必須・idを渡すと更新）、style_delete=執筆スタイル削除（id必須）。スタイルは get_scene_context の style_guide に常に含まれ、執筆時の文体指針になる（例: 三人称一元視点、地の文は常体、戦闘描写は短文でテンポ重視、禁止表現など）。",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete" },
-        id: { type: "string", description: "ルールID（英数字・ハイフン）" },
-        category: { type: "string", description: "カテゴリ（例: 能力, 制約, 世界観, 用語）" },
-        rule: { type: "string", description: "ルール本文" },
-        applies_from: { type: "string", description: "適用開始時刻（ISO8601）。updateでnullクリア" },
+        action: { type: "string", description: "操作: create / update / delete / style_set / style_delete" },
+        id: { type: "string", description: "ルールID / スタイルID（style_setでは省略時に自動採番）" },
+        category: { type: "string", description: "カテゴリ（世界ルール例: 能力, 制約, 用語 ／ スタイル例: 文体, 視点, 描写, 台詞, 禁則）" },
+        rule: { type: "string", description: "本文（世界ルールの内容、またはスタイルの内容）" },
+        applies_from: { type: "string", description: "適用開始時刻（ISO8601・世界ルールのみ）。updateでnullクリア" },
+        title: { type: "string", description: "スタイルの見出し（style_set時・任意）" },
+        sort_order: { type: "number", description: "スタイルの表示順（style_set時・任意・小さいほど先）" },
       },
       required: ["action"],
     },
@@ -308,6 +310,8 @@ function getHelp(): unknown {
         create: "世界ルール登録。id・category・rule 必須",
         update: "世界ルール更新。id 必須",
         delete: "世界ルール削除。id 必須",
+        style_set: "執筆スタイル（文体・描写の流儀）の登録/上書き。category・rule 必須（title・sort_order 任意、id省略で新規）",
+        style_delete: "執筆スタイル削除。id 必須",
       },
     },
     tips: [
@@ -317,6 +321,7 @@ function getHelp(): unknown {
       "本文の書き込みは manage_scene{action:'save_body', scene_id, body}。上書き前の本文は自動で履歴に残る。書き直しに失敗したら list_revisions → restore_revision で戻せる。",
       "大きな再構成のあとは必ず check_all_consistency で時系列・参照整合・順序を確認する。",
       "意識入れ替わり（consciousness_swaps）は manage_character の add_swap/update_swap/delete_swap で管理できる（from=自我、to=入る身体）。シーンの視点は manage_scene{action:'update', protagonist_identity_id}で設定。Web UI / REST API（/api/consciousness_swaps）でも編集可。",
+      "文体・描写の流儀は執筆スタイル（style_guides）に保存でき、get_scene_context の style_guide に常に含まれる。本文を書くときは必ずこれに従う。登録・編集は manage_world_rule{action:'style_set', category, rule}（例: category='視点', rule='三人称一元視点。地の文は常体'）。",
     ],
   };
 }
@@ -507,6 +512,9 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     };
   }
 
+  // 執筆スタイル（文体・描写の流儀）。登録があれば常に添付する
+  const styleGuide = await listStyleGuides(db);
+
   return {
     scene,
     protagonist_status: protagonistStatus,
@@ -515,6 +523,8 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
     next_scene: nextScene,
     relationships,
     world_rules: worldRules,
+    style_guide: styleGuide.length > 0 ? styleGuide : null,
+    style_note: styleGuide.length > 0 ? "本文執筆時は style_guide の文体・描写ルールに従うこと" : null,
   };
 }
 
@@ -993,6 +1003,48 @@ async function deleteWorldRule(db: D1Database, args: { id: string }): Promise<un
   return { ok: true, id: args.id };
 }
 
+// 執筆スタイル（文体・描写の流儀）。テーブルは初回アクセス時に自動作成。
+async function ensureStyleTable(db: D1Database): Promise<void> {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS style_guides (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      title TEXT,
+      content TEXT NOT NULL,
+      sort_order INTEGER,
+      updated_at TEXT
+    )`
+  ).run();
+}
+
+async function listStyleGuides(db: D1Database): Promise<Array<Record<string, unknown>>> {
+  try {
+    return (
+      await db.prepare("SELECT id, category, title, content, sort_order FROM style_guides ORDER BY COALESCE(sort_order, 9999), category, title").all()
+    ).results as Array<Record<string, unknown>>;
+  } catch {
+    return []; // テーブル未作成
+  }
+}
+
+async function setStyleGuide(db: D1Database, args: { id?: string; category?: string; content?: string; title?: string; sort_order?: number }): Promise<unknown> {
+  if (!args.category || !args.content) return { error: "category と rule（スタイル内容）は必須です" };
+  await ensureStyleTable(db);
+  const id = args.id ?? crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO style_guides (id, category, title, content, sort_order, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, content=excluded.content, sort_order=excluded.sort_order, updated_at=excluded.updated_at`
+  ).bind(id, args.category, args.title ?? null, args.content, args.sort_order ?? null, new Date().toISOString()).run();
+  return { ok: true, id, category: args.category };
+}
+
+async function deleteStyleGuide(db: D1Database, args: { id: string }): Promise<unknown> {
+  if (!args.id) return { error: "id は必須です" };
+  await ensureStyleTable(db);
+  await db.prepare("DELETE FROM style_guides WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
+}
+
 async function addRelationship(db: D1Database, args: { character_id_a: string; character_id_b: string; relation_type: string; is_public?: boolean; from_scene_id?: string; notes?: string }): Promise<unknown> {
   let validFrom: string | null = null;
   if (args.from_scene_id) {
@@ -1144,8 +1196,14 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "delete":
                 toolResult = await deleteWorldRule(env.DB, { id: a.id as string });
                 break;
+              case "style_set":
+                toolResult = await setStyleGuide(env.DB, { id: a.id as string | undefined, category: a.category as string | undefined, content: (a.rule ?? a.content) as string | undefined, title: a.title as string | undefined, sort_order: a.sort_order as number | undefined });
+                break;
+              case "style_delete":
+                toolResult = await deleteStyleGuide(env.DB, { id: a.id as string });
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_world_rule: unknown action '${action}' (create/update/delete)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_world_rule: unknown action '${action}' (create/update/delete/style_set/style_delete)` } };
             }
             break;
           }
@@ -1479,6 +1537,46 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    // 執筆スタイル（文体・描写の流儀）
+    if (resource === 'styles') {
+      await ensureStyleTable(env.DB);
+      if (method === 'GET') {
+        const styles = await listStyleGuides(env.DB);
+        return json({ styles });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as { id?: string; category: string; title?: string; content: string; sort_order?: number };
+        const result = await setStyleGuide(env.DB, body);
+        return json(result);
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as { category?: string; title?: string | null; content?: string; sort_order?: number | null };
+        const existing = await env.DB.prepare("SELECT id FROM style_guides WHERE id=?").bind(id).first();
+        if (!existing) return json({ error: `Style '${id}' not found` }, 404);
+        await env.DB.prepare(
+          `UPDATE style_guides SET
+            category=COALESCE(?,category),
+            title=CASE WHEN ?=1 THEN ? ELSE title END,
+            content=COALESCE(?,content),
+            sort_order=CASE WHEN ?=1 THEN ? ELSE sort_order END,
+            updated_at=?
+           WHERE id=?`
+        ).bind(
+          body.category ?? null,
+          'title' in body ? 1 : 0, body.title ?? null,
+          body.content ?? null,
+          'sort_order' in body ? 1 : 0, body.sort_order ?? null,
+          new Date().toISOString(),
+          id
+        ).run();
+        return json({ ok: true });
+      }
+      if (method === 'DELETE' && id) {
+        await env.DB.prepare("DELETE FROM style_guides WHERE id=?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
     if (resource === 'scene_revisions') {
       await ensureRevisionsTable(env.DB);
       if (method === 'GET' && id) {
@@ -1495,7 +1593,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'export' && method === 'GET') {
-      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars'];
+      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars', 'style_guides'];
       const data: Record<string, unknown> = {};
       for (const tbl of tables) {
         try {
