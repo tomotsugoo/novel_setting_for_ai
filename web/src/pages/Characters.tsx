@@ -82,8 +82,8 @@ export default function Characters() {
   const [selected, setSelected] = useState<Character | null>(null);
   const [charTab, setCharTab] = useState<'info' | 'states'>('info');
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', role: 'supporting', description: '', secret: '', aliases: '' });
-  const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
+  const [editForm, setEditForm] = useState({ name: '', role: 'supporting', description: '', secret: '', aliases: '', speech_style: '' });
+  const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '' });
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [states, setStates] = useState<CharacterState[]>([]);
@@ -107,7 +107,7 @@ export default function Characters() {
     setSelected(c);
     setCharTab('info');
     setEditing(false);
-    setEditForm({ name: c.name, role: c.role, description: c.description ?? '', secret: c.secret ?? '', aliases: c.aliases ?? '' });
+    setEditForm({ name: c.name, role: c.role, description: c.description ?? '', secret: c.secret ?? '', aliases: c.aliases ?? '', speech_style: c.speech_style ?? '' });
     loadStates(c.id);
   };
 
@@ -116,7 +116,7 @@ export default function Characters() {
     try {
       await api.characters.create(form);
       setShowAdd(false);
-      setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '' });
+      setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -237,6 +237,10 @@ export default function Characters() {
               <label className="block text-sm font-medium text-gray-700 mb-1">秘密</label>
               <textarea value={form.secret} onChange={e => setForm({...form, secret: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">口調（一人称・口癖・語尾など）</label>
+              <textarea value={form.speech_style} onChange={e => setForm({...form, speech_style: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="例: 一人称「私」。断定口調で命令形が多い。「〜だろう」を多用" />
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
               <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">追加</button>
@@ -333,6 +337,10 @@ export default function Characters() {
                     <label className="block text-xs font-medium text-gray-600 mb-1">秘密</label>
                     <textarea value={editForm.secret} onChange={e => setEditForm({...editForm, secret: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">口調（一人称・口癖・語尾など）</label>
+                    <textarea value={editForm.speech_style} onChange={e => setEditForm({...editForm, speech_style: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="例: 一人称「私」。断定口調で命令形が多い" />
+                  </div>
                   <div className="flex justify-end gap-3 pt-1">
                     <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">キャンセル</button>
                     <button type="submit" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">保存</button>
@@ -344,6 +352,7 @@ export default function Characters() {
                   {selected.aliases && <div><span className="font-medium text-gray-700">別名: </span><span className="text-gray-600">{selected.aliases}</span></div>}
                   {selected.description && <div><span className="font-medium text-gray-700">説明: </span><p className="text-gray-600 mt-1">{selected.description}</p></div>}
                   {selected.secret && <div><span className="font-medium text-gray-700">秘密: </span><p className="text-gray-600 mt-1 bg-yellow-50 p-2 rounded">{selected.secret}</p></div>}
+                  {selected.speech_style && <div><span className="font-medium text-gray-700">口調: </span><p className="text-gray-600 mt-1 bg-indigo-50 p-2 rounded">{selected.speech_style}</p></div>}
                   <div className="flex justify-end pt-1">
                     <button onClick={() => setEditing(true)} className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">編集</button>
                   </div>

@@ -105,9 +105,9 @@ export default function Scenes() {
   const [detailScene, setDetailScene] = useState<Scene | null>(null);
   const [sceneChars, setSceneChars] = useState<SceneCharacter[]>([]);
   const [addCharForm, setAddCharForm] = useState({ character_id: '', role_in_scene: 'present', is_pov: false, notes: '' });
-  const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+  const [form, setForm] = useState({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '' });
   const [editingScene, setEditingScene] = useState(false);
-  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+  const [editSceneForm, setEditSceneForm] = useState({ title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '' });
   const [sceneTab, setSceneTab] = useState<'info' | 'body'>('info');
   const [bodyText, setBodyText] = useState('');
   const [bodySaving, setBodySaving] = useState(false);
@@ -133,6 +133,8 @@ export default function Scenes() {
       narrative_order: scene.narrative_order != null ? String(scene.narrative_order) : '',
       location: scene.location ?? '',
       disclosure_notes: scene.disclosure_notes ?? '',
+      synopsis: scene.synopsis ?? '',
+      reader_goal: scene.reader_goal ?? '',
     });
     const r = await api.sceneCharacters.list(scene.id);
     setSceneChars(r.scene_characters);
@@ -172,6 +174,8 @@ export default function Scenes() {
         narrative_order: editSceneForm.narrative_order ? Number(editSceneForm.narrative_order) : null,
         location: editSceneForm.location || null,
         disclosure_notes: editSceneForm.disclosure_notes || null,
+        synopsis: editSceneForm.synopsis || null,
+        reader_goal: editSceneForm.reader_goal || null,
       };
       await api.scenes.update(detailScene.id, data);
       const updated = { ...detailScene, ...data };
@@ -198,7 +202,7 @@ export default function Scenes() {
         narrative_order: form.narrative_order ? Number(form.narrative_order) : undefined,
       });
       setShowAdd(false);
-      setForm({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '' });
+      setForm({ id: genId(), title: '', story_time: '', narrative_order: '', location: '', disclosure_notes: '', synopsis: '', reader_goal: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -407,6 +411,14 @@ export default function Scenes() {
                   <LocationInput value={editSceneForm.location} onChange={v => setEditSceneForm({...editSceneForm, location: v})} scenes={scenes} excludeId={detailScene.id} />
                 </div>
                 <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">あらすじ（このシーンで起きる出来事）</label>
+                  <textarea value={editSceneForm.synopsis} onChange={e => setEditSceneForm({...editSceneForm, synopsis: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="例: エルシィが魔力枯渇状態になり、倒れていた体が起き上がる" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">読者への狙い（どう感じてほしいか）</label>
+                  <textarea value={editSceneForm.reader_goal} onChange={e => setEditSceneForm({...editSceneForm, reader_goal: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} placeholder="例: 「エルシィの様子がおかしい」と違和感を持ってほしい。まだ入れ替わりとは確信させない" />
+                </div>
+                <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">開示メモ</label>
                   <textarea value={editSceneForm.disclosure_notes} onChange={e => setEditSceneForm({...editSceneForm, disclosure_notes: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={6} />
                 </div>
@@ -421,6 +433,18 @@ export default function Scenes() {
                   <div><span className="text-gray-500">場所</span><p className="font-medium">{detailScene.location ?? '-'}</p></div>
                   <div><span className="text-gray-500">物語時間</span><p className="font-medium">{detailScene.story_time ?? '-'}</p></div>
                 </div>
+                {detailScene.synopsis && (
+                  <div className="text-sm">
+                    <span className="text-gray-500">あらすじ</span>
+                    <p className="mt-1 text-gray-700 bg-gray-50 rounded p-2 whitespace-pre-wrap">{detailScene.synopsis}</p>
+                  </div>
+                )}
+                {detailScene.reader_goal && (
+                  <div className="text-sm">
+                    <span className="text-gray-500">読者への狙い</span>
+                    <p className="mt-1 text-purple-700 bg-purple-50 rounded p-2 whitespace-pre-wrap">{detailScene.reader_goal}</p>
+                  </div>
+                )}
                 {detailScene.disclosure_notes && (
                   <div className="text-sm">
                     <span className="text-gray-500">開示メモ</span>
@@ -531,6 +555,14 @@ export default function Scenes() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">場所</label>
               <LocationInput value={form.location} onChange={v => setForm({...form, location: v})} scenes={scenes} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">あらすじ（このシーンで起きる出来事）</label>
+              <textarea value={form.synopsis} onChange={e => setForm({...form, synopsis: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">読者への狙い（どう感じてほしいか）</label>
+              <textarea value={form.reader_goal} onChange={e => setForm({...form, reader_goal: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">開示メモ</label>

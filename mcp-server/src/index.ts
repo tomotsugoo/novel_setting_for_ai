@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.10.0";
+const VERSION = "0.11.0";
 
 const TOOLS = [
   {
@@ -91,21 +91,30 @@ const TOOLS = [
   },
   {
     name: "manage_scene",
-    description: "シーンの作成・更新・削除・本文保存・並べ替え・本文履歴をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・上書き前の本文は自動で履歴に退避）、insert_at=シーンを指定話数の位置へ移動し全体を1..Nで自動リナンバー（scene_id,narrative_order必須・重複や欠番も解消）、list_revisions=本文履歴一覧（scene_id必須）、restore_revision=履歴から本文を復元（revision_id必須・復元前の本文も退避される）。",
+    description: "シーンの作成・更新・削除・本文保存・並べ替え・本文履歴・伏線をまとめて行う。actionで操作を指定する。create=新規作成（id,title必須）、update=メタ情報更新（scene_id必須・synopsis/reader_goalもここで設定）、delete=削除（scene_id必須）、save_body=本文保存（scene_id,body必須・上書き前の本文は自動で履歴に退避）、insert_at=シーンを指定話数の位置へ移動し全体を1..Nで自動リナンバー（scene_id,narrative_order必須）、list_revisions=本文履歴一覧（scene_id必須）、restore_revision=履歴から本文復元（revision_id必須）、foreshadow_list=伏線一覧、foreshadow_set=伏線の作成/更新（新規はtitle必須・更新はforeshadow_id必須）、foreshadow_delete=伏線削除（foreshadow_id必須）。",
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision" },
+        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision / foreshadow_list / foreshadow_set / foreshadow_delete" },
         id: { type: "string", description: "シーンID（action=create時）" },
         scene_id: { type: "string", description: "シーンID（update/delete/save_body/insert_at/list_revisions時）" },
-        title: { type: "string", description: "タイトル" },
+        title: { type: "string", description: "タイトル（シーンまたは伏線の要約）" },
         story_time: { type: "string", description: "物語内時刻（ISO8601）。updateでnullを渡すと削除" },
         narrative_order: { type: "number", description: "執筆順（話数）。updateでnullを渡すとクリア。insert_atでは移動先の話数" },
         location: { type: "string", description: "場所" },
         disclosure_notes: { type: "string", description: "開示メモ" },
+        synopsis: { type: "string", description: "あらすじ＝このシーンで起きる出来事（create/update時）。nullでクリア" },
+        reader_goal: { type: "string", description: "読者への狙い＝このシーンで読者に生じさせたい効果（例:「エルシィの様子がおかしい」と違和感を持たせる）（create/update時）。nullでクリア" },
         protagonist_identity_id: { type: "string", description: "主人公の自認＝語り手の意識のキャラID（update時）。入れ替わり中は「中身」のキャラを指定する（体の視点is_povとは別）。nullでクリア" },
         body: { type: "string", description: "本文テキスト（save_body時）" },
         revision_id: { type: "string", description: "本文履歴ID（restore_revision時）" },
+        foreshadow_id: { type: "string", description: "伏線ID（foreshadow_set更新/foreshadow_delete時）" },
+        detail: { type: "string", description: "伏線の詳細（foreshadow_set時・任意）" },
+        planted_scene_id: { type: "string", description: "伏線を張るシーンID（foreshadow_set時・任意）" },
+        payoff_scene_id: { type: "string", description: "伏線を回収する予定のシーンID（foreshadow_set時・任意）" },
+        status: { type: "string", description: "伏線の状態: open（未回収）/ resolved（回収済み）/ dropped（破棄）（foreshadow_set時）" },
+        reader_effect: { type: "string", description: "回収時に読者に感じさせたい効果（foreshadow_set時・任意）" },
+        notes: { type: "string", description: "伏線のメモ（foreshadow_set時・任意）" },
       },
       required: ["action"],
     },
@@ -123,6 +132,7 @@ const TOOLS = [
         role: { type: "string", description: "役割: protagonist / antagonist / supporting" },
         description: { type: "string", description: "説明・プロフィール。updateでnullクリア" },
         secret: { type: "string", description: "秘密・読者非開示情報。updateでnullクリア" },
+        speech_style: { type: "string", description: "口調設定（一人称・二人称・口癖・語尾など。例: 一人称「私」、砕けた口調で「〜じゃん」を多用）。updateでnullクリア" },
         character_id: { type: "string", description: "キャラクターID（add_state時）" },
         scene_id: { type: "string", description: "状態が始まるシーンID（add_state時・valid_fromに使用）" },
         appearance: { type: "string", description: "外見の説明（add_state時）" },
@@ -176,6 +186,32 @@ const TOOLS = [
     },
   },
 ];
+
+// スキーマ拡張（v0.11.0: シーンのあらすじ・読者への狙い、キャラ口調、伏線テーブル）。
+// 初回アクセス時に自動適用し、isolateごとに1回だけ実行する。
+let schemaExtensionsEnsured = false;
+async function ensureSchemaExtensions(db: D1Database): Promise<void> {
+  if (schemaExtensionsEnsured) return;
+  for (const sql of [
+    "ALTER TABLE scenes ADD COLUMN synopsis TEXT",
+    "ALTER TABLE scenes ADD COLUMN reader_goal TEXT",
+    "ALTER TABLE characters ADD COLUMN speech_style TEXT",
+    `CREATE TABLE IF NOT EXISTS foreshadowings (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      detail TEXT,
+      planted_scene_id TEXT,
+      payoff_scene_id TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      reader_effect TEXT,
+      notes TEXT,
+      created_at TEXT
+    )`,
+  ]) {
+    try { await db.prepare(sql).run(); } catch { /* カラム既存など */ }
+  }
+  schemaExtensionsEnsured = true;
+}
 
 async function getConsciousness(db: D1Database, characterId: string, sceneTime?: string): Promise<unknown> {
   const t = sceneTime ?? "9999-99-99";
@@ -284,13 +320,16 @@ function getHelp(): unknown {
     })),
     write_actions: {
       manage_scene: {
-        create: "新規シーン作成。id・title 必須（story_time/narrative_order/location/disclosure_notes 任意）",
-        update: "メタ情報更新。scene_id 必須。story_time・narrative_order・protagonist_identity_id も変更可（null でクリア）",
+        create: "新規シーン作成。id・title 必須（story_time/narrative_order/location/disclosure_notes/synopsis/reader_goal 任意）",
+        update: "メタ情報更新。scene_id 必須。story_time・narrative_order・protagonist_identity_id・synopsis（あらすじ）・reader_goal（読者への狙い）も変更可（null でクリア）",
         delete: "シーン削除。scene_id 必須（scene_characters も同時削除）",
         save_body: "本文保存。scene_id・body 必須（is_written が true になる）。上書き前の本文は自動で履歴に退避（直近20件）",
         insert_at: "シーンを指定話数の位置へ移動。scene_id・narrative_order 必須。全シーンを1..Nで振り直すので重複・欠番も解消される",
         list_revisions: "本文の履歴一覧。scene_id 必須（各履歴のid・保存日時・文字数を返す）",
         restore_revision: "履歴から本文を復元。revision_id 必須（復元前の本文も履歴に退避される）",
+        foreshadow_list: "伏線一覧（張った/回収シーン名・状態つき）",
+        foreshadow_set: "伏線の作成/更新。新規は title 必須（detail/planted_scene_id/payoff_scene_id/status/reader_effect/notes 任意）。更新は foreshadow_id 必須。status: open=未回収 / resolved=回収済み / dropped=破棄",
+        foreshadow_delete: "伏線削除。foreshadow_id 必須",
       },
       manage_character: {
         create: "新規キャラ作成。id・name 必須",
@@ -322,6 +361,9 @@ function getHelp(): unknown {
       "大きな再構成のあとは必ず check_all_consistency で時系列・参照整合・順序を確認する。",
       "意識入れ替わり（consciousness_swaps）は manage_character の add_swap/update_swap/delete_swap で管理できる（from=自我、to=入る身体）。シーンの視点は manage_scene{action:'update', protagonist_identity_id}で設定。Web UI / REST API（/api/consciousness_swaps）でも編集可。",
       "文体・描写の流儀は執筆スタイル（style_guides）に保存でき、get_scene_context の style_guide に常に含まれる。本文を書くときは必ずこれに従う。登録・編集は manage_world_rule{action:'style_set', category, rule}（例: category='視点', rule='三人称一元視点。地の文は常体'）。",
+      "本文を書く前に、そのシーンの writing_direction（synopsis=出来事、reader_goal=読者に生じさせたい効果）を確認する。未設定なら manage_scene{action:'update', synopsis, reader_goal} で先に設計するとよい。reader_goal は本文に直接書かず、効果が生まれる構成にする。",
+      "伏線は manage_scene の foreshadow_set/foreshadow_list/foreshadow_delete で管理。get_scene_context にそのシーンで張る伏線・回収する伏線・未回収一覧が含まれる。回収を書いたら status を resolved に更新する。check_all_consistency が回収漏れを警告する。",
+      "キャラの口調（一人称・口癖・語尾）は characters.speech_style に保存でき、get_scene_context の登場キャラ情報に含まれる。セリフはこれに従う。",
     ],
   };
 }
@@ -366,7 +408,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   // 登場人物（基本情報）
   const sceneCharacters = (
     await db.prepare(
-      `SELECT sc.*, c.name, c.role, c.aliases, c.description, c.secret
+      `SELECT sc.*, c.name, c.role, c.aliases, c.description, c.secret, c.speech_style
        FROM scene_characters sc JOIN characters c ON sc.character_id = c.id
        WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
     ).bind(args.scene_id).all()
@@ -404,6 +446,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
       role_in_scene: sc.role_in_scene,
       description: sc.description,
       secret: sc.secret,
+      speech_style: sc.speech_style ?? null,
       current_appearance: charState?.appearance ?? null,
       current_status: charState?.status ?? null,
       state_notes: charState?.notes ?? null,
@@ -515,14 +558,37 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   // 執筆スタイル（文体・描写の流儀）。登録があれば常に添付する
   const styleGuide = await listStyleGuides(db);
 
+  // 執筆指針（あらすじ＋読者への狙い）
+  const synopsis = (scene.synopsis as string | null) ?? null;
+  const readerGoal = (scene.reader_goal as string | null) ?? null;
+  const writingDirection = (synopsis || readerGoal) ? {
+    synopsis,
+    reader_goal: readerGoal,
+    note: "synopsis=このシーンで起きる出来事。reader_goal=読者に生じさせたい効果（例: 違和感を持たせる、驚かせる）。reader_goal は本文に直接書く内容ではない——『驚いた』と書くのではなく、驚きが生まれる構成・情報の出し方にすること",
+  } : null;
+
+  // 伏線（このシーンで張る・回収する・未回収一覧）
+  const allForeshadows = await listForeshadows(db);
+  const plantedHere = allForeshadows.filter(f => f.planted_scene_id === args.scene_id);
+  const payoffHere = allForeshadows.filter(f => f.payoff_scene_id === args.scene_id);
+  const openForeshadows = allForeshadows.filter(f => f.status === 'open');
+  const foreshadowing = (plantedHere.length || payoffHere.length || openForeshadows.length) ? {
+    plant_in_this_scene: plantedHere,
+    payoff_in_this_scene: payoffHere,
+    open_foreshadows: openForeshadows,
+    note: "plant_in_this_scene=このシーンで張る伏線（さりげなく仕込む）。payoff_in_this_scene=このシーンで回収する伏線（回収を書いたら manage_scene{action:'foreshadow_set', foreshadow_id, status:'resolved'} で更新）。open_foreshadows=未回収の伏線一覧（矛盾する記述をしないこと）",
+  } : null;
+
   return {
     scene,
+    writing_direction: writingDirection,
     protagonist_status: protagonistStatus,
     characters_in_scene: charactersInScene,
     previous_scene: prevScene,
     next_scene: nextScene,
     relationships,
     world_rules: worldRules,
+    foreshadowing,
     style_guide: styleGuide.length > 0 ? styleGuide : null,
     style_note: styleGuide.length > 0 ? "本文執筆時は style_guide の文体・描写ルールに従うこと" : null,
   };
@@ -594,7 +660,7 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   const issues: { severity: "error" | "warning" | "info"; category: string; message: string }[] = [];
 
   const characters = (await db.prepare("SELECT id, name FROM characters").all()).results as Array<{ id: string; name: string }>;
-  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null }>;
+  const scenes = (await db.prepare("SELECT id, title, story_time, narrative_order, protagonist_identity_id, is_written FROM scenes ORDER BY story_time").all()).results as Array<{ id: string; title: string; story_time: string | null; narrative_order: number | null; protagonist_identity_id: string | null; is_written: number }>;
   const swaps = (await db.prepare("SELECT * FROM consciousness_swaps ORDER BY swapped_at").all()).results as Array<{ id: string; from_character_id: string; to_character_id: string; swapped_at: string; resolved_at: string | null; trigger_event: string | null; notes: string | null }>;
   const sceneChars = (await db.prepare("SELECT scene_id, character_id, is_pov FROM scene_characters").all()).results as Array<{ scene_id: string; character_id: string; is_pov: number }>;
 
@@ -693,6 +759,32 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
     issues.push({ severity: "info", category: "シーン情報", message: `物語時間が未設定のシーンが${noTimeScenes.length}件あります: ${noTimeScenes.map(s => `「${s.title}」`).join(", ")}` });
   }
 
+  // 9. 伏線の整合性
+  const foreshadows = await listForeshadows(db);
+  const sceneIdSet = new Set(scenes.map(s => s.id));
+  for (const f of foreshadows) {
+    const fTitle = f.title as string;
+    if (f.planted_scene_id && !sceneIdSet.has(f.planted_scene_id as string)) {
+      issues.push({ severity: "error", category: "伏線", message: `伏線「${fTitle}」を張るシーン '${f.planted_scene_id}' が存在しません` });
+    }
+    if (f.payoff_scene_id && !sceneIdSet.has(f.payoff_scene_id as string)) {
+      issues.push({ severity: "error", category: "伏線", message: `伏線「${fTitle}」の回収シーン '${f.payoff_scene_id}' が存在しません` });
+    }
+    if (f.status === 'open' && f.payoff_scene_id) {
+      const payoffScene = scenes.find(s => s.id === f.payoff_scene_id);
+      if (payoffScene?.is_written) {
+        issues.push({ severity: "warning", category: "伏線", message: `伏線「${fTitle}」の回収予定シーン「${payoffScene.title}」は執筆済みですが、伏線が未回収（open）のままです。回収を書き忘れたか、statusの更新忘れです` });
+      }
+    }
+    if (f.status === 'resolved' && !f.payoff_scene_id) {
+      issues.push({ severity: "info", category: "伏線", message: `伏線「${fTitle}」は回収済みですが、どのシーンで回収したか（payoff_scene_id）が未記録です` });
+    }
+  }
+  const openCount = foreshadows.filter(f => f.status === 'open').length;
+  if (openCount > 0) {
+    issues.push({ severity: "info", category: "伏線", message: `未回収の伏線が${openCount}件あります: ${foreshadows.filter(f => f.status === 'open').map(f => `「${f.title}」`).join(", ")}` });
+  }
+
   const errors = issues.filter(i => i.severity === "error");
   const warnings = issues.filter(i => i.severity === "warning");
   const infos = issues.filter(i => i.severity === "info");
@@ -714,11 +806,11 @@ async function checkAllConsistency(db: D1Database): Promise<unknown> {
   };
 }
 
-async function createScene(db: D1Database, args: { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string }): Promise<unknown> {
+async function createScene(db: D1Database, args: { id: string; title: string; story_time?: string; narrative_order?: number; location?: string; disclosure_notes?: string; synopsis?: string; reader_goal?: string }): Promise<unknown> {
   const exists = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.id).first();
   if (exists) return { error: `Scene '${args.id}' already exists` };
-  await db.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(args.id, args.title, args.story_time ?? null, args.narrative_order ?? null, args.location ?? null, args.disclosure_notes ?? null).run();
+  await db.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes, synopsis, reader_goal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(args.id, args.title, args.story_time ?? null, args.narrative_order ?? null, args.location ?? null, args.disclosure_notes ?? null, args.synopsis ?? null, args.reader_goal ?? null).run();
   return { ok: true, id: args.id, title: args.title };
 }
 
@@ -810,7 +902,7 @@ async function insertSceneAt(db: D1Database, args: { scene_id: string; narrative
   return { ok: true, scene_id: scene.id, title: scene.title, new_order: pos, renumbered };
 }
 
-async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null }): Promise<unknown> {
+async function updateScene(db: D1Database, args: { scene_id: string; title?: string; story_time?: string | null; narrative_order?: number | null; location?: string; disclosure_notes?: string; protagonist_identity_id?: string | null; synopsis?: string | null; reader_goal?: string | null }): Promise<unknown> {
   const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
   if (!scene) return { error: `Scene '${args.scene_id}' not found` };
   const hasStoryTime = 'story_time' in args;
@@ -823,7 +915,9 @@ async function updateScene(db: D1Database, args: { scene_id: string; title?: str
       narrative_order=CASE WHEN ?=1 THEN ? ELSE narrative_order END,
       location=COALESCE(?,location),
       disclosure_notes=COALESCE(?,disclosure_notes),
-      protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END
+      protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END,
+      synopsis=CASE WHEN ?=1 THEN ? ELSE synopsis END,
+      reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END
      WHERE id=?`
   ).bind(
     args.title ?? null,
@@ -832,16 +926,18 @@ async function updateScene(db: D1Database, args: { scene_id: string; title?: str
     args.location ?? null,
     args.disclosure_notes ?? null,
     hasIdentity ? 1 : 0, args.protagonist_identity_id ?? null,
+    'synopsis' in args ? 1 : 0, args.synopsis ?? null,
+    'reader_goal' in args ? 1 : 0, args.reader_goal ?? null,
     args.scene_id
   ).run();
   return { ok: true, scene_id: args.scene_id };
 }
 
-async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string }): Promise<unknown> {
+async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string; speech_style?: string }): Promise<unknown> {
   const exists = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
   if (exists) return { error: `Character '${args.id}' already exists` };
-  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret) VALUES (?,?,?,?,?,?)")
-    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null).run();
+  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret,speech_style) VALUES (?,?,?,?,?,?,?)")
+    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null, args.speech_style ?? null).run();
   return { ok: true, id: args.id, name: args.name };
 }
 
@@ -857,7 +953,7 @@ async function addCharacterState(db: D1Database, args: { character_id: string; s
   return { ok: true, id, character_id: args.character_id, valid_from: scene.story_time, scene_title: scene.title };
 }
 
-async function updateCharacter(db: D1Database, args: { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null }): Promise<unknown> {
+async function updateCharacter(db: D1Database, args: { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null; speech_style?: string | null }): Promise<unknown> {
   const char = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
   if (!char) return { error: `Character '${args.id}' not found` };
   await db.prepare(
@@ -866,7 +962,8 @@ async function updateCharacter(db: D1Database, args: { id: string; name?: string
       aliases=CASE WHEN ?=1 THEN ? ELSE aliases END,
       role=COALESCE(?,role),
       description=CASE WHEN ?=1 THEN ? ELSE description END,
-      secret=CASE WHEN ?=1 THEN ? ELSE secret END
+      secret=CASE WHEN ?=1 THEN ? ELSE secret END,
+      speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END
      WHERE id=?`
   ).bind(
     args.name ?? null,
@@ -874,6 +971,7 @@ async function updateCharacter(db: D1Database, args: { id: string; name?: string
     args.role ?? null,
     'description' in args ? 1 : 0, args.description ?? null,
     'secret' in args ? 1 : 0, args.secret ?? null,
+    'speech_style' in args ? 1 : 0, args.speech_style ?? null,
     args.id
   ).run();
   return { ok: true, id: args.id };
@@ -1003,6 +1101,77 @@ async function deleteWorldRule(db: D1Database, args: { id: string }): Promise<un
   return { ok: true, id: args.id };
 }
 
+// 伏線管理
+async function listForeshadows(db: D1Database): Promise<Array<Record<string, unknown>>> {
+  try {
+    return (
+      await db.prepare(
+        `SELECT f.*, sp.title as planted_scene_title, pp.title as payoff_scene_title
+         FROM foreshadowings f
+         LEFT JOIN scenes sp ON f.planted_scene_id = sp.id
+         LEFT JOIN scenes pp ON f.payoff_scene_id = pp.id
+         ORDER BY CASE f.status WHEN 'open' THEN 0 WHEN 'resolved' THEN 1 ELSE 2 END, f.created_at`
+      ).all()
+    ).results as Array<Record<string, unknown>>;
+  } catch {
+    return [];
+  }
+}
+
+async function setForeshadow(db: D1Database, args: { id?: string; title?: string; detail?: string | null; planted_scene_id?: string | null; payoff_scene_id?: string | null; status?: string; reader_effect?: string | null; notes?: string | null }): Promise<unknown> {
+  if (args.status && !['open', 'resolved', 'dropped'].includes(args.status)) {
+    return { error: "status は open（未回収）/ resolved（回収済み）/ dropped（破棄）のいずれかです" };
+  }
+  for (const key of ['planted_scene_id', 'payoff_scene_id'] as const) {
+    const sceneId = args[key];
+    if (sceneId) {
+      const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(sceneId).first();
+      if (!scene) return { error: `${key} のシーン '${sceneId}' が存在しません` };
+    }
+  }
+  const existing = args.id
+    ? await db.prepare("SELECT id FROM foreshadowings WHERE id=?").bind(args.id).first()
+    : null;
+  if (existing) {
+    await db.prepare(
+      `UPDATE foreshadowings SET
+        title=COALESCE(?,title),
+        detail=CASE WHEN ?=1 THEN ? ELSE detail END,
+        planted_scene_id=CASE WHEN ?=1 THEN ? ELSE planted_scene_id END,
+        payoff_scene_id=CASE WHEN ?=1 THEN ? ELSE payoff_scene_id END,
+        status=COALESCE(?,status),
+        reader_effect=CASE WHEN ?=1 THEN ? ELSE reader_effect END,
+        notes=CASE WHEN ?=1 THEN ? ELSE notes END
+       WHERE id=?`
+    ).bind(
+      args.title ?? null,
+      'detail' in args ? 1 : 0, args.detail ?? null,
+      'planted_scene_id' in args ? 1 : 0, args.planted_scene_id ?? null,
+      'payoff_scene_id' in args ? 1 : 0, args.payoff_scene_id ?? null,
+      args.status ?? null,
+      'reader_effect' in args ? 1 : 0, args.reader_effect ?? null,
+      'notes' in args ? 1 : 0, args.notes ?? null,
+      args.id
+    ).run();
+    return { ok: true, id: args.id, updated: true };
+  }
+  if (!args.title) return { error: "新規作成には title（伏線の内容の要約）が必須です" };
+  const id = args.id ?? crypto.randomUUID();
+  await db.prepare(
+    "INSERT INTO foreshadowings (id, title, detail, planted_scene_id, payoff_scene_id, status, reader_effect, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)"
+  ).bind(
+    id, args.title, args.detail ?? null, args.planted_scene_id ?? null, args.payoff_scene_id ?? null,
+    args.status ?? 'open', args.reader_effect ?? null, args.notes ?? null, new Date().toISOString()
+  ).run();
+  return { ok: true, id, created: true };
+}
+
+async function deleteForeshadow(db: D1Database, args: { id: string }): Promise<unknown> {
+  if (!args.id) return { error: "id は必須です" };
+  await db.prepare("DELETE FROM foreshadowings WHERE id=?").bind(args.id).run();
+  return { ok: true, id: args.id };
+}
+
 // 執筆スタイル（文体・描写の流儀）。テーブルは初回アクセス時に自動作成。
 async function ensureStyleTable(db: D1Database): Promise<void> {
   await db.prepare(
@@ -1081,6 +1250,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
       case "tools/call": {
         const toolName = params.name as string;
         const toolArgs = (params.arguments ?? {}) as Record<string, unknown>;
+        await ensureSchemaExtensions(env.DB);
         let toolResult: unknown;
         switch (toolName) {
           case "help":
@@ -1110,11 +1280,18 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             const sceneId = (a.scene_id ?? a.id) as string;
             switch (action) {
               case "create":
-                toolResult = await createScene(env.DB, { id: (a.id ?? a.scene_id) as string, title: a.title as string, story_time: a.story_time as string | undefined, narrative_order: a.narrative_order as number | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined });
+                toolResult = await createScene(env.DB, { id: (a.id ?? a.scene_id) as string, title: a.title as string, story_time: a.story_time as string | undefined, narrative_order: a.narrative_order as number | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined, synopsis: a.synopsis as string | undefined, reader_goal: a.reader_goal as string | undefined });
                 break;
-              case "update":
-                toolResult = await updateScene(env.DB, { scene_id: sceneId, title: a.title as string | undefined, story_time: a.story_time as string | null | undefined, narrative_order: a.narrative_order as number | null | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined, protagonist_identity_id: a.protagonist_identity_id as string | null | undefined });
+              case "update": {
+                const upd: Parameters<typeof updateScene>[1] = { scene_id: sceneId, title: a.title as string | undefined, location: a.location as string | undefined, disclosure_notes: a.disclosure_notes as string | undefined };
+                if ('story_time' in a) upd.story_time = a.story_time as string | null;
+                if ('narrative_order' in a) upd.narrative_order = a.narrative_order as number | null;
+                if ('protagonist_identity_id' in a) upd.protagonist_identity_id = a.protagonist_identity_id as string | null;
+                if ('synopsis' in a) upd.synopsis = a.synopsis as string | null;
+                if ('reader_goal' in a) upd.reader_goal = a.reader_goal as string | null;
+                toolResult = await updateScene(env.DB, upd);
                 break;
+              }
               case "delete":
                 toolResult = await deleteScene(env.DB, { scene_id: sceneId });
                 break;
@@ -1130,8 +1307,24 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "restore_revision":
                 toolResult = await restoreBodyRevision(env.DB, { revision_id: a.revision_id as string });
                 break;
+              case "foreshadow_list":
+                toolResult = { foreshadows: await listForeshadows(env.DB) };
+                break;
+              case "foreshadow_set": {
+                const fs: Parameters<typeof setForeshadow>[1] = { id: (a.foreshadow_id ?? a.id) as string | undefined, title: a.title as string | undefined, status: a.status as string | undefined };
+                if ('detail' in a) fs.detail = a.detail as string | null;
+                if ('planted_scene_id' in a) fs.planted_scene_id = a.planted_scene_id as string | null;
+                if ('payoff_scene_id' in a) fs.payoff_scene_id = a.payoff_scene_id as string | null;
+                if ('reader_effect' in a) fs.reader_effect = a.reader_effect as string | null;
+                if ('notes' in a) fs.notes = a.notes as string | null;
+                toolResult = await setForeshadow(env.DB, fs);
+                break;
+              }
+              case "foreshadow_delete":
+                toolResult = await deleteForeshadow(env.DB, { id: (a.foreshadow_id ?? a.id) as string });
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision/foreshadow_list/foreshadow_set/foreshadow_delete)` } };
             }
             break;
           }
@@ -1140,11 +1333,17 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             const action = a.action as string;
             switch (action) {
               case "create":
-                toolResult = await createCharacter(env.DB, { id: a.id as string, name: a.name as string, aliases: a.aliases as string | undefined, role: a.role as string | undefined, description: a.description as string | undefined, secret: a.secret as string | undefined });
+                toolResult = await createCharacter(env.DB, { id: a.id as string, name: a.name as string, aliases: a.aliases as string | undefined, role: a.role as string | undefined, description: a.description as string | undefined, secret: a.secret as string | undefined, speech_style: a.speech_style as string | undefined });
                 break;
-              case "update":
-                toolResult = await updateCharacter(env.DB, { id: a.id as string, name: a.name as string | undefined, aliases: a.aliases as string | null | undefined, role: a.role as string | undefined, description: a.description as string | null | undefined, secret: a.secret as string | null | undefined });
+              case "update": {
+                const upd: Parameters<typeof updateCharacter>[1] = { id: a.id as string, name: a.name as string | undefined, role: a.role as string | undefined };
+                if ('aliases' in a) upd.aliases = a.aliases as string | null;
+                if ('description' in a) upd.description = a.description as string | null;
+                if ('secret' in a) upd.secret = a.secret as string | null;
+                if ('speech_style' in a) upd.speech_style = a.speech_style as string | null;
+                toolResult = await updateCharacter(env.DB, upd);
                 break;
+              }
               case "delete":
                 toolResult = await deleteCharacter(env.DB, { id: a.id as string });
                 break;
@@ -1172,9 +1371,12 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "create":
                 toolResult = await addRelationship(env.DB, { character_id_a: a.character_id_a as string, character_id_b: a.character_id_b as string, relation_type: a.relation_type as string, is_public: a.is_public as boolean | undefined, from_scene_id: a.from_scene_id as string | undefined, notes: a.notes as string | undefined });
                 break;
-              case "update":
-                toolResult = await updateRelationship(env.DB, { id: a.id as string, relation_type: a.relation_type as string | undefined, is_public: a.is_public as boolean | undefined, notes: a.notes as string | null | undefined });
+              case "update": {
+                const upd: Parameters<typeof updateRelationship>[1] = { id: a.id as string, relation_type: a.relation_type as string | undefined, is_public: a.is_public as boolean | undefined };
+                if ('notes' in a) upd.notes = a.notes as string | null;
+                toolResult = await updateRelationship(env.DB, upd);
                 break;
+              }
               case "delete":
                 toolResult = await deleteRelationship(env.DB, { id: a.id as string });
                 break;
@@ -1190,9 +1392,12 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "create":
                 toolResult = await addWorldRule(env.DB, { id: a.id as string, category: a.category as string, rule: a.rule as string, applies_from: a.applies_from as string | undefined });
                 break;
-              case "update":
-                toolResult = await updateWorldRule(env.DB, { id: a.id as string, category: a.category as string | undefined, rule: a.rule as string | undefined, applies_from: a.applies_from as string | null | undefined });
+              case "update": {
+                const upd: Parameters<typeof updateWorldRule>[1] = { id: a.id as string, category: a.category as string | undefined, rule: a.rule as string | undefined };
+                if ('applies_from' in a) upd.applies_from = a.applies_from as string | null;
+                toolResult = await updateWorldRule(env.DB, upd);
                 break;
+              }
               case "delete":
                 toolResult = await deleteWorldRule(env.DB, { id: a.id as string });
                 break;
@@ -1292,6 +1497,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
   try {
+    await ensureSchemaExtensions(env.DB);
     if (resource === 'dashboard') {
       const charCount = await env.DB.prepare("SELECT COUNT(*) as n FROM characters").first<{n:number}>();
       const sceneCount = await env.DB.prepare("SELECT COUNT(*) as n FROM scenes").first<{n:number}>();
@@ -1306,17 +1512,17 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ characters: result.results });
       }
       if (method === 'POST') {
-        const body = await request.json() as {id:string;name:string;aliases?:string;role?:string;description?:string;secret?:string};
-        await env.DB.prepare("INSERT INTO characters (id, name, aliases, role, description, secret) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(body.id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null).run();
+        const body = await request.json() as {id:string;name:string;aliases?:string;role?:string;description?:string;secret?:string;speech_style?:string};
+        await env.DB.prepare("INSERT INTO characters (id, name, aliases, role, description, secret, speech_style) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(body.id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, body.speech_style ?? null).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string;avatar?:string|null};
+        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string;avatar?:string|null;speech_style?:string|null};
         const hasAvatar = 'avatar' in (body as object);
         await env.DB.prepare(
-          "UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret), avatar=CASE WHEN ?=1 THEN ? ELSE avatar END WHERE id=?"
-        ).bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, hasAvatar ? 1 : 0, body.avatar ?? null, id).run();
+          "UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret), avatar=CASE WHEN ?=1 THEN ? ELSE avatar END, speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END WHERE id=?"
+        ).bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, hasAvatar ? 1 : 0, body.avatar ?? null, 'speech_style' in body ? 1 : 0, body.speech_style ?? null, id).run();
         return json({ ok: true });
       }
     }
@@ -1327,13 +1533,13 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ scenes: result.results });
       }
       if (method === 'POST') {
-        const body = await request.json() as {id:string;title:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string};
-        await env.DB.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(body.id, body.title, body.story_time ?? null, body.narrative_order ?? null, body.location ?? null, body.disclosure_notes ?? null).run();
+        const body = await request.json() as {id:string;title:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;synopsis?:string;reader_goal?:string};
+        await env.DB.prepare("INSERT INTO scenes (id, title, story_time, narrative_order, location, disclosure_notes, synopsis, reader_goal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(body.id, body.title, body.story_time ?? null, body.narrative_order ?? null, body.location ?? null, body.disclosure_notes ?? null, body.synopsis || null, body.reader_goal || null).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null};
+        const body = await request.json() as {title?:string;story_time?:string;narrative_order?:number;location?:string;disclosure_notes?:string;is_written?:number;protagonist_identity_id?:string|null;body?:string|null;synopsis?:string|null;reader_goal?:string|null};
         const hasIdentity = 'protagonist_identity_id' in (body as object);
         const hasBody = 'body' in (body as object);
         if (hasBody) {
@@ -1341,12 +1547,15 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           await archiveBodyRevision(env.DB, id, cur?.body ?? null, body.body ?? null);
         }
         await env.DB.prepare(
-          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END WHERE id=?"
+          "UPDATE scenes SET title=COALESCE(?,title), story_time=COALESCE(?,story_time), narrative_order=COALESCE(?,narrative_order), location=COALESCE(?,location), disclosure_notes=COALESCE(?,disclosure_notes), is_written=COALESCE(?,is_written), protagonist_identity_id=CASE WHEN ?=1 THEN ? ELSE protagonist_identity_id END, body=CASE WHEN ?=1 THEN ? ELSE body END, synopsis=CASE WHEN ?=1 THEN ? ELSE synopsis END, reader_goal=CASE WHEN ?=1 THEN ? ELSE reader_goal END WHERE id=?"
         ).bind(
           body.title ?? null, body.story_time ?? null, body.narrative_order ?? null,
           body.location ?? null, body.disclosure_notes ?? null, body.is_written ?? null,
           hasIdentity ? 1 : 0, body.protagonist_identity_id ?? null,
-          hasBody ? 1 : 0, body.body ?? null, id
+          hasBody ? 1 : 0, body.body ?? null,
+          'synopsis' in body ? 1 : 0, body.synopsis ?? null,
+          'reader_goal' in body ? 1 : 0, body.reader_goal ?? null,
+          id
         ).run();
         return json({ ok: true });
       }
@@ -1537,6 +1746,24 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
       }
     }
 
+    // 伏線管理
+    if (resource === 'foreshadowings') {
+      if (method === 'GET') {
+        return json({ foreshadowings: await listForeshadows(env.DB) });
+      }
+      if (method === 'POST') {
+        const body = await request.json() as Record<string, unknown>;
+        return json(await setForeshadow(env.DB, body as Parameters<typeof setForeshadow>[1]));
+      }
+      if (method === 'PUT' && id) {
+        const body = await request.json() as Record<string, unknown>;
+        return json(await setForeshadow(env.DB, { ...(body as Parameters<typeof setForeshadow>[1]), id }));
+      }
+      if (method === 'DELETE' && id) {
+        return json(await deleteForeshadow(env.DB, { id }));
+      }
+    }
+
     // 執筆スタイル（文体・描写の流儀）
     if (resource === 'styles') {
       await ensureStyleTable(env.DB);
@@ -1593,7 +1820,7 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'export' && method === 'GET') {
-      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars', 'style_guides'];
+      const tables = ['characters', 'scenes', 'world_rules', 'scene_characters', 'consciousness_swaps', 'character_states', 'relationships', 'scene_body_revisions', 'character_avatars', 'style_guides', 'foreshadowings'];
       const data: Record<string, unknown> = {};
       for (const tbl of tables) {
         try {

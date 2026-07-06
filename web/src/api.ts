@@ -74,6 +74,12 @@ export const api = {
     update: (id: string, data: Partial<Relationship>) => apiFetch(`/api/relationships/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => apiFetch(`/api/relationships/${id}`, { method: 'DELETE' }),
   },
+  foreshadowings: {
+    list: () => apiFetch<{foreshadowings: Foreshadowing[]}>('/api/foreshadowings'),
+    create: (data: Partial<Foreshadowing>) => apiFetch('/api/foreshadowings', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Foreshadowing>) => apiFetch(`/api/foreshadowings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch(`/api/foreshadowings/${id}`, { method: 'DELETE' }),
+  },
   styles: {
     list: () => apiFetch<{styles: StyleGuide[]}>('/api/styles'),
     create: (data: Partial<StyleGuide>) => apiFetch('/api/styles', { method: 'POST', body: JSON.stringify(data) }),
@@ -90,14 +96,23 @@ export const api = {
 export interface Character {
   id: string; name: string; aliases: string; role: string;
   is_twin: number; twin_of: string | null; secret: string | null;
-  description: string | null; avatar: string | null; created_at: string;
+  description: string | null; avatar: string | null;
+  speech_style: string | null; created_at: string;
 }
 export interface Scene {
   id: string; title: string; story_time: string | null;
   narrative_order: number | null; location: string | null;
   timeline_branch_id: string | null; disclosure_notes: string | null;
   is_written: number; protagonist_identity_id: string | null;
-  body: string | null; created_at: string;
+  body: string | null; synopsis: string | null; reader_goal: string | null;
+  created_at: string;
+}
+export interface Foreshadowing {
+  id: string; title: string; detail: string | null;
+  planted_scene_id: string | null; payoff_scene_id: string | null;
+  status: 'open' | 'resolved' | 'dropped';
+  reader_effect: string | null; notes: string | null; created_at: string | null;
+  planted_scene_title?: string | null; payoff_scene_title?: string | null;
 }
 export interface WorldRule {
   id: string; category: string; rule: string; applies_from: string | null;
