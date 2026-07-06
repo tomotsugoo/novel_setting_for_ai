@@ -212,12 +212,12 @@ export default function ConsciousnessSwaps() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">意識の入れ替わり</h2>
           <p className="text-sm text-gray-500 mt-1">体と意識が一致しない状態を管理します</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">
+        <button onClick={() => setShowAdd(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm shrink-0">
           + 入れ替わりを記録
         </button>
       </div>
@@ -232,13 +232,15 @@ export default function ConsciousnessSwaps() {
             const toScene = swap.resolved_at ? sceneByTime(swap.resolved_at) : null;
             const egoScene = swap.ego_recovered_at ? sceneByTime(swap.ego_recovered_at) : null;
             return (
-              <div key={swap.id} className={`bg-white rounded-xl shadow p-5 border-l-4 ${active ? 'border-red-400' : 'border-gray-300'}`}>
-                <div className="flex items-start justify-between">
+              <div key={swap.id} className={`bg-white rounded-xl shadow p-4 md:p-5 border-l-4 ${active ? 'border-red-400' : 'border-gray-300'}`}>
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {active && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">進行中</span>}
-                    </div>
-                    <p className="font-semibold text-gray-900">
+                    {active && (
+                      <div className="mb-1">
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-medium">進行中</span>
+                      </div>
+                    )}
+                    <p className="font-semibold text-gray-900 leading-relaxed">
                       <span className="text-indigo-600">{swap.from_name ?? charName(swap.from_character_id)}</span>
                       <span className="text-gray-400 mx-1">の意識が</span>
                       <span className="text-gray-500">{swap.source_body_name ?? (swap.source_body_id ? charName(swap.source_body_id) : (swap.from_name ?? charName(swap.from_character_id)))}</span>
@@ -248,25 +250,25 @@ export default function ConsciousnessSwaps() {
                     </p>
                     {swap.trigger_event && <p className="text-sm text-gray-500 mt-1">原因: {swap.trigger_event}</p>}
                     {swap.notes && <p className="text-sm text-gray-400 mt-1">{swap.notes}</p>}
-                    <p className="text-xs text-gray-400 mt-2">
-                      開始シーン: {fromScene ? sceneLabel(fromScene) : swap.swapped_at}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-2">
+                      <span>開始シーン: {fromScene ? sceneLabel(fromScene) : swap.swapped_at}</span>
                       {swap.ego_recovered_at && (
-                        <span className="ml-3">自我回復: {egoScene ? sceneLabel(egoScene) : swap.ego_recovered_at}</span>
+                        <span>自我回復: {egoScene ? sceneLabel(egoScene) : swap.ego_recovered_at}</span>
                       )}
                       {swap.resolved_at && (
-                        <span className="ml-3">入れ替わり終了: {toScene ? sceneLabel(toScene) : swap.resolved_at}</span>
+                        <span>入れ替わり終了: {toScene ? sceneLabel(toScene) : swap.resolved_at}</span>
                       )}
-                    </p>
+                    </div>
                   </div>
-                  <div className="flex gap-2 ml-4 flex-shrink-0 flex-wrap justify-end">
+                  <div className="flex gap-2 flex-wrap md:ml-4 md:shrink-0 md:justify-end border-t md:border-t-0 pt-3 md:pt-0">
                     {!swap.ego_recovered_at && (
-                      <button onClick={() => { setEgoRecoverSwap(swap); setEgoRecoverSceneId(''); }} className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">自我回復を記録</button>
+                      <button onClick={() => { setEgoRecoverSwap(swap); setEgoRecoverSceneId(''); }} className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 whitespace-nowrap">自我回復を記録</button>
                     )}
                     {active && (
-                      <button onClick={() => { setResolveSwap(swap); setResolveSceneId(''); }} className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">入れ替わり終了</button>
+                      <button onClick={() => { setResolveSwap(swap); setResolveSceneId(''); }} className="text-xs px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 whitespace-nowrap">入れ替わり終了</button>
                     )}
-                    <button onClick={() => openEdit(swap)} className="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">編集</button>
-                    <button onClick={() => handleDelete(swap.id)} className="text-xs px-3 py-1 text-red-400 hover:text-red-600 border border-red-200 rounded">削除</button>
+                    <button onClick={() => openEdit(swap)} className="text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 whitespace-nowrap">編集</button>
+                    <button onClick={() => handleDelete(swap.id)} className="text-xs px-3 py-1.5 text-red-400 hover:text-red-600 border border-red-200 rounded whitespace-nowrap">削除</button>
                   </div>
                 </div>
               </div>
