@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.12.0";
+const VERSION = "0.12.1";
 
 const TOOLS = [
   {
@@ -136,6 +136,7 @@ const TOOLS = [
         description: { type: "string", description: "説明・プロフィール。updateでnullクリア" },
         secret: { type: "string", description: "秘密・読者非開示情報。updateでnullクリア" },
         speech_style: { type: "string", description: "口調設定（一人称・二人称・口癖・語尾など。例: 一人称「私」、砕けた口調で「〜じゃん」を多用）。updateでnullクリア" },
+        gender: { type: "string", description: "性別（例: 男性, 女性, その他・自由記述可）。updateでnullクリア" },
         character_id: { type: "string", description: "キャラクターID（add_state時）" },
         scene_id: { type: "string", description: "状態が始まるシーンID（add_state時・valid_fromに使用）" },
         appearance: { type: "string", description: "外見の説明（add_state時）" },
@@ -200,6 +201,7 @@ async function ensureSchemaExtensions(db: D1Database): Promise<void> {
     "ALTER TABLE scenes ADD COLUMN reader_goal TEXT",
     "ALTER TABLE scenes ADD COLUMN episode_id TEXT",
     "ALTER TABLE characters ADD COLUMN speech_style TEXT",
+    "ALTER TABLE characters ADD COLUMN gender TEXT",
     `CREATE TABLE IF NOT EXISTS episodes (
       id TEXT PRIMARY KEY,
       episode_number INTEGER,
@@ -429,7 +431,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
   // 登場人物（基本情報）
   const sceneCharacters = (
     await db.prepare(
-      `SELECT sc.*, c.name, c.role, c.aliases, c.description, c.secret, c.speech_style
+      `SELECT sc.*, c.name, c.role, c.aliases, c.description, c.secret, c.speech_style, c.gender
        FROM scene_characters sc JOIN characters c ON sc.character_id = c.id
        WHERE sc.scene_id = ? ORDER BY sc.role_in_scene`
     ).bind(args.scene_id).all()
@@ -464,6 +466,7 @@ async function getSceneContext(db: D1Database, args: { scene_id: string }): Prom
       name: sc.name,
       aliases: sc.aliases,
       role: sc.role,
+      gender: sc.gender ?? null,
       role_in_scene: sc.role_in_scene,
       description: sc.description,
       secret: sc.secret,
@@ -1019,11 +1022,11 @@ async function updateScene(db: D1Database, args: { scene_id: string; title?: str
   return { ok: true, scene_id: args.scene_id };
 }
 
-async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string; speech_style?: string }): Promise<unknown> {
+async function createCharacter(db: D1Database, args: { id: string; name: string; aliases?: string; role?: string; description?: string; secret?: string; speech_style?: string; gender?: string }): Promise<unknown> {
   const exists = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
   if (exists) return { error: `Character '${args.id}' already exists` };
-  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret,speech_style) VALUES (?,?,?,?,?,?,?)")
-    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null, args.speech_style ?? null).run();
+  await db.prepare("INSERT INTO characters (id,name,aliases,role,description,secret,speech_style,gender) VALUES (?,?,?,?,?,?,?,?)")
+    .bind(args.id, args.name, args.aliases ?? null, args.role ?? 'supporting', args.description ?? null, args.secret ?? null, args.speech_style ?? null, args.gender ?? null).run();
   return { ok: true, id: args.id, name: args.name };
 }
 
@@ -1039,7 +1042,7 @@ async function addCharacterState(db: D1Database, args: { character_id: string; s
   return { ok: true, id, character_id: args.character_id, valid_from: scene.story_time, scene_title: scene.title };
 }
 
-async function updateCharacter(db: D1Database, args: { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null; speech_style?: string | null }): Promise<unknown> {
+async function updateCharacter(db: D1Database, args: { id: string; name?: string; aliases?: string | null; role?: string; description?: string | null; secret?: string | null; speech_style?: string | null; gender?: string | null }): Promise<unknown> {
   const char = await db.prepare("SELECT id FROM characters WHERE id=?").bind(args.id).first();
   if (!char) return { error: `Character '${args.id}' not found` };
   await db.prepare(
@@ -1049,7 +1052,8 @@ async function updateCharacter(db: D1Database, args: { id: string; name?: string
       role=COALESCE(?,role),
       description=CASE WHEN ?=1 THEN ? ELSE description END,
       secret=CASE WHEN ?=1 THEN ? ELSE secret END,
-      speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END
+      speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END,
+      gender=CASE WHEN ?=1 THEN ? ELSE gender END
      WHERE id=?`
   ).bind(
     args.name ?? null,
@@ -1058,6 +1062,7 @@ async function updateCharacter(db: D1Database, args: { id: string; name?: string
     'description' in args ? 1 : 0, args.description ?? null,
     'secret' in args ? 1 : 0, args.secret ?? null,
     'speech_style' in args ? 1 : 0, args.speech_style ?? null,
+    'gender' in args ? 1 : 0, args.gender ?? null,
     args.id
   ).run();
   return { ok: true, id: args.id };
@@ -1500,7 +1505,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
             const action = a.action as string;
             switch (action) {
               case "create":
-                toolResult = await createCharacter(env.DB, { id: a.id as string, name: a.name as string, aliases: a.aliases as string | undefined, role: a.role as string | undefined, description: a.description as string | undefined, secret: a.secret as string | undefined, speech_style: a.speech_style as string | undefined });
+                toolResult = await createCharacter(env.DB, { id: a.id as string, name: a.name as string, aliases: a.aliases as string | undefined, role: a.role as string | undefined, description: a.description as string | undefined, secret: a.secret as string | undefined, speech_style: a.speech_style as string | undefined, gender: a.gender as string | undefined });
                 break;
               case "update": {
                 const upd: Parameters<typeof updateCharacter>[1] = { id: a.id as string, name: a.name as string | undefined, role: a.role as string | undefined };
@@ -1508,6 +1513,7 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
                 if ('description' in a) upd.description = a.description as string | null;
                 if ('secret' in a) upd.secret = a.secret as string | null;
                 if ('speech_style' in a) upd.speech_style = a.speech_style as string | null;
+                if ('gender' in a) upd.gender = a.gender as string | null;
                 toolResult = await updateCharacter(env.DB, upd);
                 break;
               }
@@ -1679,17 +1685,17 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
         return json({ characters: result.results });
       }
       if (method === 'POST') {
-        const body = await request.json() as {id:string;name:string;aliases?:string;role?:string;description?:string;secret?:string;speech_style?:string};
-        await env.DB.prepare("INSERT INTO characters (id, name, aliases, role, description, secret, speech_style) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(body.id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, body.speech_style ?? null).run();
+        const body = await request.json() as {id:string;name:string;aliases?:string;role?:string;description?:string;secret?:string;speech_style?:string;gender?:string};
+        await env.DB.prepare("INSERT INTO characters (id, name, aliases, role, description, secret, speech_style, gender) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(body.id, body.name, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, body.speech_style ?? null, body.gender ?? null).run();
         return json({ ok: true });
       }
       if (method === 'PUT' && id) {
-        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string;avatar?:string|null;speech_style?:string|null};
+        const body = await request.json() as {name?:string;aliases?:string;role?:string;description?:string;secret?:string;avatar?:string|null;speech_style?:string|null;gender?:string|null};
         const hasAvatar = 'avatar' in (body as object);
         await env.DB.prepare(
-          "UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret), avatar=CASE WHEN ?=1 THEN ? ELSE avatar END, speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END WHERE id=?"
-        ).bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, hasAvatar ? 1 : 0, body.avatar ?? null, 'speech_style' in body ? 1 : 0, body.speech_style ?? null, id).run();
+          "UPDATE characters SET name=COALESCE(?,name), aliases=COALESCE(?,aliases), role=COALESCE(?,role), description=COALESCE(?,description), secret=COALESCE(?,secret), avatar=CASE WHEN ?=1 THEN ? ELSE avatar END, speech_style=CASE WHEN ?=1 THEN ? ELSE speech_style END, gender=CASE WHEN ?=1 THEN ? ELSE gender END WHERE id=?"
+        ).bind(body.name ?? null, body.aliases ?? null, body.role ?? null, body.description ?? null, body.secret ?? null, hasAvatar ? 1 : 0, body.avatar ?? null, 'speech_style' in body ? 1 : 0, body.speech_style ?? null, 'gender' in body ? 1 : 0, body.gender ?? null, id).run();
         return json({ ok: true });
       }
     }

@@ -82,8 +82,8 @@ export default function Characters() {
   const [selected, setSelected] = useState<Character | null>(null);
   const [charTab, setCharTab] = useState<'info' | 'states'>('info');
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', role: 'supporting', description: '', secret: '', aliases: '', speech_style: '' });
-  const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '' });
+  const [editForm, setEditForm] = useState({ name: '', role: 'supporting', description: '', secret: '', aliases: '', speech_style: '', gender: '' });
+  const [form, setForm] = useState({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '', gender: '' });
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [states, setStates] = useState<CharacterState[]>([]);
@@ -107,7 +107,7 @@ export default function Characters() {
     setSelected(c);
     setCharTab('info');
     setEditing(false);
-    setEditForm({ name: c.name, role: c.role, description: c.description ?? '', secret: c.secret ?? '', aliases: c.aliases ?? '', speech_style: c.speech_style ?? '' });
+    setEditForm({ name: c.name, role: c.role, description: c.description ?? '', secret: c.secret ?? '', aliases: c.aliases ?? '', speech_style: c.speech_style ?? '', gender: c.gender ?? '' });
     loadStates(c.id);
   };
 
@@ -116,7 +116,7 @@ export default function Characters() {
     try {
       await api.characters.create(form);
       setShowAdd(false);
-      setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '' });
+      setForm({ id: genId(), name: '', role: 'supporting', description: '', secret: '', speech_style: '', gender: '' });
       load();
     } catch (e) { setError(String(e)); }
   };
@@ -221,14 +221,26 @@ export default function Characters() {
               <label className="block text-sm font-medium text-gray-700 mb-1">名前 (必須)</label>
               <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">役割</label>
-              <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
-                <option value="protagonist">主人公</option>
-                <option value="antagonist">敵</option>
-                <option value="supporting">サブ</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">役割</label>
+                <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="protagonist">主人公</option>
+                  <option value="antagonist">敵</option>
+                  <option value="supporting">サブ</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
+                <input list="gender-options" value={form.gender} onChange={e => setForm({...form, gender: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="未設定" />
+              </div>
             </div>
+            <datalist id="gender-options">
+              <option value="男性" />
+              <option value="女性" />
+              <option value="その他" />
+              <option value="不明" />
+            </datalist>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">説明</label>
               <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} />
@@ -326,6 +338,16 @@ export default function Characters() {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">性別</label>
+                    <input list="gender-options-edit" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="未設定" />
+                    <datalist id="gender-options-edit">
+                      <option value="男性" />
+                      <option value="女性" />
+                      <option value="その他" />
+                      <option value="不明" />
+                    </datalist>
+                  </div>
+                  <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">別名</label>
                     <input value={editForm.aliases} onChange={e => setEditForm({...editForm, aliases: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" />
                   </div>
@@ -349,6 +371,7 @@ export default function Characters() {
               ) : (
                 <>
                   <div><span className="font-medium text-gray-700">役割: </span><Badge role={selected.role} /></div>
+                  {selected.gender && <div><span className="font-medium text-gray-700">性別: </span><span className="text-gray-600">{selected.gender}</span></div>}
                   {selected.aliases && <div><span className="font-medium text-gray-700">別名: </span><span className="text-gray-600">{selected.aliases}</span></div>}
                   {selected.description && <div><span className="font-medium text-gray-700">説明: </span><p className="text-gray-600 mt-1">{selected.description}</p></div>}
                   {selected.secret && <div><span className="font-medium text-gray-700">秘密: </span><p className="text-gray-600 mt-1 bg-yellow-50 p-2 rounded">{selected.secret}</p></div>}
