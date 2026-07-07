@@ -2,6 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import { api, Episode, Scene } from '../api';
 
 type Mode = 'full' | 'single';
+type TtsState = 'idle' | 'playing' | 'paused';
+
+// 読み上げ用に文単位で分割（1チャンク約120字。Chromeの長文停止バグ回避も兼ねる）
+function splitChunks(text: string, max = 120): string[] {
+  const parts = text.replace(/\r/g, '').split(/([。！？\n])/);
+  const sentences: string[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const s = (parts[i] ?? '') + (parts[i + 1] ?? '');
+    if (s) sentences.push(s);
+  }
+  const chunks: string[] = [];
+  let buf = '';
+  for (const s of sentences) {
+    if (buf && (buf + s).length > max) { chunks.push(buf); buf = s; }
+    else buf += s;
+  }
+  if (buf.trim()) chunks.push(buf);
+  return chunks.map(c => c.trim()).filter(Boolean);
+}
 
 function formatStoryTime(s: string | null): string {
   if (!s) return '';
@@ -46,6 +65,33 @@ export default function StoryReader() {
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
 
+  // 読み上げ（Web Speech API・ブラウザ内蔵の音声合成）
+  const [ttsState, setTtsState] = useState<TtsState>('idle');
+  const [ttsRate, setTtsRate] = useState(1.0);
+  const [ttsVoices, setTtsVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [ttsVoiceName, setTtsVoiceName] = useState('');
+  const [ttsContinuous, setTtsContinuous] = useState(true);
+  const ttsRef = useRef({ stop: false, rate: 1.0, voiceName: '', continuous: true });
+  ttsRef.current.rate = ttsRate;
+  ttsRef.current.voiceName = ttsVoiceName;
+  ttsRef.current.continuous = ttsContinuous;
+
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const loadVoices = () => {
+      const ja = synth.getVoices().filter(v => v.lang.startsWith('ja'));
+      setTtsVoices(ja);
+      setTtsVoiceName(prev => prev || (ja[0]?.name ?? ''));
+    };
+    loadVoices();
+    synth.addEventListener?.('voiceschanged', loadVoices);
+    return () => {
+      synth.cancel();
+      synth.removeEventListener?.('voiceschanged', loadVoices);
+    };
+  }, []);
+
   useEffect(() => {
     Promise.all([api.scenes.list(), api.episodes.list().catch(() => ({ episodes: [] as Episode[] }))]).then(([res, eps]) => {
       const sorted = [...res.scenes].sort((a, b) => {
@@ -73,6 +119,62 @@ export default function StoryReader() {
 
   const scrollToScene = (id: string) => {
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // --- 読み上げ制御 ---
+  const stopTts = () => {
+    ttsRef.current.stop = true;
+    window.speechSynthesis?.cancel();
+    setTtsState('idle');
+  };
+
+  const speakSceneAt = (index: number, sceneList: Scene[]) => {
+    const synth = window.speechSynthesis;
+    if (!synth) { alert('このブラウザは読み上げに対応していません'); return; }
+    synth.cancel();
+    ttsRef.current.stop = false;
+    const scene = sceneList[index];
+    if (!scene?.body) {
+      // 未執筆ならスキップして次へ
+      const next = sceneList.findIndex((s, i) => i > index && s.body);
+      if (next >= 0) { setCurrentIndex(next); speakSceneAt(next, sceneList); }
+      else setTtsState('idle');
+      return;
+    }
+    const chunks = splitChunks(`${scene.title}。${scene.body}`);
+    let i = 0;
+    const speakNext = () => {
+      if (ttsRef.current.stop) return;
+      if (i >= chunks.length) {
+        const next = sceneList.findIndex((s, idx) => idx > index && s.body);
+        if (ttsRef.current.continuous && next >= 0) {
+          setCurrentIndex(next);
+          speakSceneAt(next, sceneList);
+        } else {
+          setTtsState('idle');
+        }
+        return;
+      }
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      u.lang = 'ja-JP';
+      const voice = synth.getVoices().find(v => v.name === ttsRef.current.voiceName);
+      if (voice) u.voice = voice;
+      u.rate = ttsRef.current.rate;
+      u.onend = speakNext;
+      u.onerror = () => { if (!ttsRef.current.stop) setTtsState('idle'); };
+      synth.speak(u);
+    };
+    setTtsState('playing');
+    speakNext();
+  };
+
+  const pauseTts = () => {
+    window.speechSynthesis?.pause();
+    setTtsState('paused');
+  };
+  const resumeTts = () => {
+    window.speechSynthesis?.resume();
+    setTtsState('playing');
   };
 
   if (loading) {
@@ -200,10 +302,10 @@ export default function StoryReader() {
       {mode === 'single' && (
         <div>
           {/* シーン選択 */}
-          <div className="mb-6">
+          <div className="mb-4">
             <select
               value={currentIndex}
-              onChange={e => setCurrentIndex(Number(e.target.value))}
+              onChange={e => { stopTts(); setCurrentIndex(Number(e.target.value)); }}
               className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm bg-white shadow-sm"
             >
               {scenes.map((s, i) => (
@@ -212,6 +314,57 @@ export default function StoryReader() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* 読み上げコントロール */}
+          <div className="mb-6 bg-white rounded-lg border border-gray-200 px-4 py-3 flex items-center gap-3 flex-wrap">
+            {ttsState === 'idle' && (
+              <button
+                onClick={() => speakSceneAt(currentIndex, scenes)}
+                disabled={!currentScene?.body}
+                className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40"
+              >▶ 読み上げ</button>
+            )}
+            {ttsState === 'playing' && (
+              <button onClick={pauseTts} className="px-4 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600">⏸ 一時停止</button>
+            )}
+            {ttsState === 'paused' && (
+              <button onClick={resumeTts} className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">▶ 再開</button>
+            )}
+            {ttsState !== 'idle' && (
+              <button onClick={stopTts} className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">⏹ 停止</button>
+            )}
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              速度
+              <select
+                value={ttsRate}
+                onChange={e => setTtsRate(Number(e.target.value))}
+                className="border rounded px-2 py-1 text-xs bg-white"
+              >
+                <option value={0.8}>0.8x</option>
+                <option value={1}>1.0x</option>
+                <option value={1.2}>1.2x</option>
+                <option value={1.5}>1.5x</option>
+                <option value={2}>2.0x</option>
+              </select>
+            </label>
+            {ttsVoices.length > 1 && (
+              <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                声
+                <select
+                  value={ttsVoiceName}
+                  onChange={e => setTtsVoiceName(e.target.value)}
+                  className="border rounded px-2 py-1 text-xs bg-white max-w-40"
+                >
+                  {ttsVoices.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              <input type="checkbox" checked={ttsContinuous} onChange={e => setTtsContinuous(e.target.checked)} />
+              次のシーンへ自動継続
+            </label>
+            {ttsState === 'playing' && <span className="text-xs text-indigo-500 animate-pulse">🔊 再生中</span>}
           </div>
 
           {/* 本文カード */}
@@ -227,7 +380,7 @@ export default function StoryReader() {
           {/* 前後ナビ */}
           <div className="flex items-center justify-between mt-6 gap-4">
             <button
-              onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+              onClick={() => { stopTts(); setCurrentIndex(i => Math.max(0, i - 1)); }}
               disabled={currentIndex === 0}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
@@ -243,7 +396,7 @@ export default function StoryReader() {
             </span>
 
             <button
-              onClick={() => setCurrentIndex(i => Math.min(scenes.length - 1, i + 1))}
+              onClick={() => { stopTts(); setCurrentIndex(i => Math.min(scenes.length - 1, i + 1)); }}
               disabled={currentIndex === scenes.length - 1}
               className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
