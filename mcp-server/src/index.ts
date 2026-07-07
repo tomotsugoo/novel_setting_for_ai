@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.12.2";
+const VERSION = "0.13.0";
 
 const TOOLS = [
   {
@@ -95,7 +95,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision / foreshadow_list / foreshadow_set / foreshadow_delete / episode_list / episode_set / episode_delete" },
+        action: { type: "string", description: "操作: create / update / delete / save_body / insert_at / list_revisions / restore_revision / set_character / remove_character / foreshadow_list / foreshadow_set / foreshadow_delete / episode_list / episode_set / episode_delete。set_character=シーンに登場人物を追加/更新（scene_id,character_id必須。is_pov=trueで視点キャラに設定・他キャラの視点は自動解除）、remove_character=シーンから登場人物を外す" },
         id: { type: "string", description: "シーンID（action=create時）" },
         scene_id: { type: "string", description: "シーンID（update/delete/save_body/insert_at/list_revisions時）" },
         title: { type: "string", description: "タイトル（シーンまたは伏線の要約）" },
@@ -118,6 +118,9 @@ const TOOLS = [
         episode_id: { type: "string", description: "話ID（update時=シーンの所属話・nullで解除 ／ episode_set更新・episode_delete時=対象の話）" },
         episode_number: { type: "number", description: "話数（episode_set時。第N話のN）" },
         hook: { type: "string", description: "この話の引き＝末尾で読者を次話へ引っ張る要素（episode_set時・任意）" },
+        character_id: { type: "string", description: "キャラクターID（set_character / remove_character時）" },
+        role_in_scene: { type: "string", description: "シーンでの役割: active（活躍）/ present（同席）/ mentioned（言及のみ）（set_character時・省略時は既存値または present）" },
+        is_pov: { type: "boolean", description: "視点キャラ（体・カメラ位置）かどうか（set_character時）。trueにすると同シーンの他キャラの視点は自動で外れる。意識レベルの語り手は protagonist_identity_id で別途設定" },
       },
       required: ["action"],
     },
@@ -128,7 +131,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        action: { type: "string", description: "操作: create / update / delete / add_state / add_swap / update_swap / delete_swap" },
+        action: { type: "string", description: "操作: create / update / delete / add_state / add_swap / update_swap / delete_swap / list_swaps（入れ替わり一覧・swap_id確認用）" },
         id: { type: "string", description: "キャラクターID（create/update/delete時）" },
         name: { type: "string", description: "名前" },
         aliases: { type: "string", description: "別名・呼び名（カンマ区切り）。updateでnullクリア" },
@@ -352,6 +355,8 @@ function getHelp(): unknown {
         episode_list: "話（エピソード）一覧。所属シーン・執筆済み数・合計文字数つき",
         episode_set: "話の作成/更新。新規は title 必須（episode_number/hook=引き/notes/status 任意）。更新は episode_id 必須。status: draft=下書き / published=公開済み",
         episode_delete: "話削除。episode_id 必須（所属シーンは削除されず紐付けだけ外れる）",
+        set_character: "シーンに登場人物を追加/更新。scene_id・character_id 必須（role_in_scene: active/present/mentioned、is_pov: 視点キャラ指定＝他キャラの視点は自動解除、notes 任意）",
+        remove_character: "シーンから登場人物を外す。scene_id・character_id 必須",
       },
       manage_character: {
         create: "新規キャラ作成。id・name 必須",
@@ -361,6 +366,7 @@ function getHelp(): unknown {
         add_swap: "意識入れ替わりイベント作成。swap_id・from_character_id（自我）・to_character_id（入る身体）・swapped_at 必須",
         update_swap: "入れ替わり更新。swap_id 必須（resolved_at/ego_recovered_at/trigger_event/notes は null でクリア）",
         delete_swap: "入れ替わり削除。swap_id 必須",
+        list_swaps: "入れ替わり一覧（swap_id・キャラ名つき）。update_swap の前に swap_id を確認する用途",
       },
       manage_relationship: {
         create: "関係性登録。character_id_a・character_id_b・relation_type 必須",
@@ -1192,6 +1198,47 @@ async function deleteWorldRule(db: D1Database, args: { id: string }): Promise<un
   return { ok: true, id: args.id };
 }
 
+// シーンへの登場人物の登録・更新（視点設定を含む）
+async function setSceneCharacter(db: D1Database, args: { scene_id: string; character_id: string; role_in_scene?: string; is_pov?: boolean; notes?: string | null }): Promise<unknown> {
+  if (!args.scene_id || !args.character_id) return { error: "scene_id と character_id は必須です" };
+  const scene = await db.prepare("SELECT id FROM scenes WHERE id=?").bind(args.scene_id).first();
+  if (!scene) return { error: `Scene '${args.scene_id}' not found` };
+  const char = await db.prepare("SELECT id, name FROM characters WHERE id=?").bind(args.character_id).first() as { id: string; name: string } | null;
+  if (!char) return { error: `Character '${args.character_id}' not found` };
+  if (args.role_in_scene && !['active', 'present', 'mentioned'].includes(args.role_in_scene)) {
+    return { error: "role_in_scene は active（活躍）/ present（同席）/ mentioned（言及のみ）のいずれかです" };
+  }
+  const existing = await db.prepare("SELECT * FROM scene_characters WHERE scene_id=? AND character_id=?").bind(args.scene_id, args.character_id).first() as Record<string, unknown> | null;
+  const role = args.role_in_scene ?? (existing?.role_in_scene as string | undefined) ?? 'present';
+  const isPov = 'is_pov' in args && args.is_pov !== undefined ? (args.is_pov ? 1 : 0) : ((existing?.is_pov as number | undefined) ?? 0);
+  const notes = 'notes' in args ? (args.notes ?? null) : ((existing?.notes as string | null | undefined) ?? null);
+  // 視点は1シーン1キャラ。is_pov を立てるときは他キャラの視点を外す
+  if (isPov === 1) {
+    await db.prepare("UPDATE scene_characters SET is_pov=0 WHERE scene_id=? AND character_id != ?").bind(args.scene_id, args.character_id).run();
+  }
+  await db.prepare("INSERT OR REPLACE INTO scene_characters (scene_id, character_id, role_in_scene, is_pov, notes) VALUES (?, ?, ?, ?, ?)")
+    .bind(args.scene_id, args.character_id, role, isPov, notes).run();
+  return { ok: true, scene_id: args.scene_id, character_id: args.character_id, name: char.name, role_in_scene: role, is_pov: isPov === 1, updated: !!existing };
+}
+
+async function removeSceneCharacter(db: D1Database, args: { scene_id: string; character_id: string }): Promise<unknown> {
+  if (!args.scene_id || !args.character_id) return { error: "scene_id と character_id は必須です" };
+  await db.prepare("DELETE FROM scene_characters WHERE scene_id=? AND character_id=?").bind(args.scene_id, args.character_id).run();
+  return { ok: true, scene_id: args.scene_id, character_id: args.character_id };
+}
+
+// 意識入れ替わりの一覧（swap_id の確認用）
+async function listSwaps(db: D1Database): Promise<unknown> {
+  const result = await db.prepare(
+    `SELECT cs.*, c_from.name as from_name, c_to.name as to_name
+     FROM consciousness_swaps cs
+     JOIN characters c_from ON cs.from_character_id = c_from.id
+     JOIN characters c_to ON cs.to_character_id = c_to.id
+     ORDER BY cs.swapped_at`
+  ).all();
+  return { swaps: result.results };
+}
+
 // 話（エピソード）管理。Web連載の投稿単位で、複数シーンをまとめる。
 async function listEpisodes(db: D1Database): Promise<Array<Record<string, unknown>>> {
   try {
@@ -1495,6 +1542,16 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "episode_delete":
                 toolResult = await deleteEpisode(env.DB, { id: (a.episode_id ?? a.id) as string });
                 break;
+              case "set_character": {
+                const sc: Parameters<typeof setSceneCharacter>[1] = { scene_id: sceneId, character_id: a.character_id as string, role_in_scene: a.role_in_scene as string | undefined };
+                if ('is_pov' in a) sc.is_pov = a.is_pov as boolean;
+                if ('notes' in a) sc.notes = a.notes as string | null;
+                toolResult = await setSceneCharacter(env.DB, sc);
+                break;
+              }
+              case "remove_character":
+                toolResult = await removeSceneCharacter(env.DB, { scene_id: sceneId, character_id: a.character_id as string });
+                break;
               default:
                 return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_scene: unknown action '${action}' (create/update/delete/save_body/insert_at/list_revisions/restore_revision/foreshadow_list/foreshadow_set/foreshadow_delete/episode_list/episode_set/episode_delete)` } };
             }
@@ -1532,8 +1589,11 @@ async function handleRpc(req: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
               case "delete_swap":
                 toolResult = await deleteSwap(env.DB, { id: (a.swap_id ?? a.id) as string });
                 break;
+              case "list_swaps":
+                toolResult = await listSwaps(env.DB);
+                break;
               default:
-                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_character: unknown action '${action}' (create/update/delete/add_state/add_swap/update_swap/delete_swap)` } };
+                return { jsonrpc: "2.0", id, error: { code: -32602, message: `manage_character: unknown action '${action}' (create/update/delete/add_state/add_swap/update_swap/delete_swap/list_swaps)` } };
             }
             break;
           }
