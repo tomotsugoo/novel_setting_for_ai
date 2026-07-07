@@ -39,6 +39,7 @@ Workers Builds の設定:
 
 - D1（SQLite）は **同時書き込みでレースコンディションが起きる**。一括更新は `Promise.all` ではなく逐次 `await` ループで行うこと。
 - スキーマ変更は `POST /api/migrate`（`mcp-server/src/index.ts` 内の `migrations` 配列）で適用。冪等（カラム重複・テーブル既存は SKIP 扱い）。
+- ⚠️ `migrations` 配列に **`_new` テーブルへコピー→DROP→RENAME 形式の再構築を置かないこと**。実行のたびにデータが初期値で上書きされる事故（is_pov 全消失）が過去に起きた。再構築が必要なら「適用済みか確認してスキップする」ガードを必ず付ける。
 
 ## MCP ツール一覧（`mcp-server/src/index.ts` の `TOOLS`）
 

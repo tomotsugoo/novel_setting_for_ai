@@ -16,7 +16,7 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-const VERSION = "0.12.1";
+const VERSION = "0.12.2";
 
 const TOOLS = [
   {
@@ -2093,15 +2093,21 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
     }
 
     if (resource === 'migrate' && method === 'POST') {
+      // ⚠️ ここには「何度実行しても安全な」SQLだけを置くこと。
+      // 過去にあった _new テーブルへコピー→DROP→RENAME 形式の再構築は、
+      // 実行のたびに is_pov や ego_recovered_at 等のデータを消す事故を起こした
+      // ため撤去済み（本番適用済みのため不要）。再構築が必要になったら
+      // 「適用済みかを確認してからスキップする」ガード付きで書くこと。
       const migrations: string[] = [
         `CREATE TABLE IF NOT EXISTS scene_characters (
           scene_id TEXT NOT NULL REFERENCES scenes(id),
           character_id TEXT NOT NULL REFERENCES characters(id),
-          role_in_scene TEXT CHECK(role_in_scene IN ('main','sub','mentioned')) DEFAULT 'sub',
+          role_in_scene TEXT CHECK(role_in_scene IN ('active','present','mentioned')) DEFAULT 'present',
+          is_pov INTEGER NOT NULL DEFAULT 0,
           notes TEXT,
           PRIMARY KEY (scene_id, character_id)
         )`,
-        `CREATE TABLE IF NOT EXISTS consciousness_swaps_new (
+        `CREATE TABLE IF NOT EXISTS consciousness_swaps (
           id TEXT PRIMARY KEY,
           from_character_id TEXT NOT NULL REFERENCES characters(id),
           to_character_id TEXT NOT NULL REFERENCES characters(id),
@@ -2110,13 +2116,6 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           trigger_event TEXT,
           notes TEXT
         )`,
-        `INSERT OR IGNORE INTO consciousness_swaps_new (id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes)
-         SELECT id, from_character_id, to_character_id, swapped_at, resolved_at, trigger_event, notes FROM consciousness_swaps`,
-        `DROP TABLE IF EXISTS consciousness_swaps`,
-        `ALTER TABLE consciousness_swaps_new RENAME TO consciousness_swaps`,
-        `ALTER TABLE scenes ADD COLUMN protagonist_identity_id TEXT REFERENCES characters(id)`,
-        `ALTER TABLE characters ADD COLUMN avatar TEXT`,
-        `ALTER TABLE scenes ADD COLUMN body TEXT`,
         `CREATE TABLE IF NOT EXISTS character_states (
           id TEXT PRIMARY KEY,
           character_id TEXT NOT NULL REFERENCES characters(id),
@@ -2136,50 +2135,19 @@ async function handleRestApi(request: Request, env: Env, url: URL): Promise<Resp
           valid_to TEXT,
           notes TEXT
         )`,
-        `CREATE TABLE IF NOT EXISTS relationships_new (
-          id TEXT PRIMARY KEY,
-          character_id_a TEXT NOT NULL REFERENCES characters(id),
-          character_id_b TEXT NOT NULL REFERENCES characters(id),
-          relation_type TEXT NOT NULL,
-          is_public INTEGER NOT NULL DEFAULT 0,
-          valid_from TEXT,
-          valid_to TEXT,
-          notes TEXT
-        )`,
-        `INSERT OR IGNORE INTO relationships_new SELECT id,character_id_a,character_id_b,relation_type,is_public,valid_from,valid_to,notes FROM relationships`,
-        `DROP TABLE IF EXISTS relationships`,
-        `ALTER TABLE relationships_new RENAME TO relationships`,
-        `ALTER TABLE consciousness_swaps ADD COLUMN ego_recovered_at TEXT NULL`,
-        `ALTER TABLE consciousness_swaps ADD COLUMN source_body_id TEXT REFERENCES characters(id)`,
-        `CREATE TABLE IF NOT EXISTS scene_characters_new (
-          scene_id TEXT NOT NULL REFERENCES scenes(id),
-          character_id TEXT NOT NULL REFERENCES characters(id),
-          role_in_scene TEXT CHECK(role_in_scene IN ('active','present','mentioned')) DEFAULT 'present',
-          is_pov INTEGER NOT NULL DEFAULT 0,
-          notes TEXT,
-          PRIMARY KEY (scene_id, character_id)
-        )`,
-        `INSERT OR IGNORE INTO scene_characters_new (scene_id, character_id, role_in_scene, is_pov, notes)
-         SELECT scene_id, character_id,
-           CASE role_in_scene WHEN 'main' THEN 'active' WHEN 'sub' THEN 'present' ELSE role_in_scene END,
-           0, notes FROM scene_characters`,
-        `DROP TABLE IF EXISTS scene_characters`,
-        `ALTER TABLE scene_characters_new RENAME TO scene_characters`,
         `CREATE TABLE IF NOT EXISTS scene_body_revisions (
           id TEXT PRIMARY KEY,
           scene_id TEXT NOT NULL REFERENCES scenes(id),
           body TEXT NOT NULL,
           saved_at TEXT NOT NULL
         )`,
-        `INSERT OR IGNORE INTO characters (id, name, aliases, role, description, secret)
-         VALUES (
-           'hoshifune-inori',
-           '星船イノリ',
-           '',
-           'protagonist',
-           '日本の大学生。異世界に召喚された際に死亡。',
-           '異世界召喚時に死亡しており、意識は別の体に移っている可能性がある。'
-         )`,
+        // カラム追加系（既存なら duplicate column エラー → SKIP 扱いで安全）
+        `ALTER TABLE scenes ADD COLUMN protagonist_identity_id TEXT REFERENCES characters(id)`,
+        `ALTER TABLE characters ADD COLUMN avatar TEXT`,
+        `ALTER TABLE scenes ADD COLUMN body TEXT`,
+        `ALTER TABLE consciousness_swaps ADD COLUMN ego_recovered_at TEXT NULL`,
+        `ALTER TABLE consciousness_swaps ADD COLUMN source_body_id TEXT REFERENCES characters(id)`,
+        `ALTER TABLE scene_characters ADD COLUMN is_pov INTEGER NOT NULL DEFAULT 0`,
       ];
       const results: string[] = [];
       for (const sql of migrations) {
