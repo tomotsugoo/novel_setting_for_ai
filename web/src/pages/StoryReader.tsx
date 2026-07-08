@@ -71,10 +71,26 @@ export default function StoryReader() {
   const [ttsVoices, setTtsVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [ttsVoiceName, setTtsVoiceName] = useState('');
   const [ttsContinuous, setTtsContinuous] = useState(true);
-  const ttsRef = useRef({ stop: false, rate: 1.0, voiceName: '', continuous: true });
+  const ttsRef = useRef({ stop: false, rate: 1.0, voiceName: '', continuous: true, playing: false });
   ttsRef.current.rate = ttsRate;
   ttsRef.current.voiceName = ttsVoiceName;
   ttsRef.current.continuous = ttsContinuous;
+
+  // 画面スリープ防止（Wake Lock）。読み上げ中はロックで音声が止まるのを防ぐ
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const acquireWakeLock = async () => {
+    try {
+      const nav = navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<WakeLockSentinel> } };
+      if (nav.wakeLock && !wakeLockRef.current) {
+        wakeLockRef.current = await nav.wakeLock.request('screen');
+        wakeLockRef.current.addEventListener?.('release', () => { wakeLockRef.current = null; });
+      }
+    } catch { /* 非対応・拒否時は無視（読み上げ自体は継続） */ }
+  };
+  const releaseWakeLock = () => {
+    wakeLockRef.current?.release?.().catch(() => {});
+    wakeLockRef.current = null;
+  };
 
   useEffect(() => {
     const synth = window.speechSynthesis;
@@ -121,10 +137,24 @@ export default function StoryReader() {
     sectionRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // 一度他アプリに切り替えて戻るとWake Lockは解放されるので、
+  // 再生中に画面が戻ってきたら取り直す
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && ttsRef.current.playing) {
+        acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   // --- 読み上げ制御 ---
   const stopTts = () => {
     ttsRef.current.stop = true;
+    ttsRef.current.playing = false;
     window.speechSynthesis?.cancel();
+    releaseWakeLock();
     setTtsState('idle');
   };
 
@@ -133,12 +163,14 @@ export default function StoryReader() {
     if (!synth) { alert('このブラウザは読み上げに対応していません'); return; }
     synth.cancel();
     ttsRef.current.stop = false;
+    ttsRef.current.playing = true;
+    acquireWakeLock();
     const scene = sceneList[index];
     if (!scene?.body) {
       // 未執筆ならスキップして次へ
       const next = sceneList.findIndex((s, i) => i > index && s.body);
       if (next >= 0) { setCurrentIndex(next); speakSceneAt(next, sceneList); }
-      else setTtsState('idle');
+      else { ttsRef.current.playing = false; releaseWakeLock(); setTtsState('idle'); }
       return;
     }
     const chunks = splitChunks(`${scene.title}。${scene.body}`);
@@ -151,6 +183,8 @@ export default function StoryReader() {
           setCurrentIndex(next);
           speakSceneAt(next, sceneList);
         } else {
+          ttsRef.current.playing = false;
+          releaseWakeLock();
           setTtsState('idle');
         }
         return;
@@ -161,7 +195,7 @@ export default function StoryReader() {
       if (voice) u.voice = voice;
       u.rate = ttsRef.current.rate;
       u.onend = speakNext;
-      u.onerror = () => { if (!ttsRef.current.stop) setTtsState('idle'); };
+      u.onerror = () => { if (!ttsRef.current.stop) { ttsRef.current.playing = false; releaseWakeLock(); setTtsState('idle'); } };
       synth.speak(u);
     };
     setTtsState('playing');
@@ -365,6 +399,9 @@ export default function StoryReader() {
               次のシーンへ自動継続
             </label>
             {ttsState === 'playing' && <span className="text-xs text-indigo-500 animate-pulse">🔊 再生中</span>}
+            <p className="w-full text-xs text-gray-400 mt-1">
+              ※読み上げ中は画面の自動ロックを抑止します（電池を消費します）。他アプリへの切替や手動での画面ロックでは停止します。
+            </p>
           </div>
 
           {/* 本文カード */}
